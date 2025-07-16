@@ -1,15 +1,5 @@
-"""
-Playwright AI 辅助操作脚本生成器（去重+页面标注版）
-功能：
-1. 扫描页面所有可点击元素。
-2. 根据父子元素的优选逻辑过滤无用元素。
-3. 在页面上框出最终保留的元素，并显示序号。
-4. 保存 JSON 和自动生成的脚本到本地。
-"""
-
 import json
 from pathlib import Path
-from playwright.sync_api import sync_playwright
 
 def extract_clickable_elements(page):
     """
@@ -84,6 +74,7 @@ def extract_clickable_elements(page):
 
 def filter_elements(elements):
     """
+    !这个内容很麻烦，后续需要更改
     根据父子元素优选逻辑过滤无用元素。
     简单启发式：
         1. 如果父子元素 text/title 完全相同且父元素缺少可识别属性 → 保留子元素。
@@ -304,42 +295,17 @@ def compress_json(elements):
             compressed.append(new_e)
     return compressed
 
-def main():
-    url = input("请输入需要分析的网页URL: ").strip()
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
-        page = context.new_page()
-        page.goto(url)
-        page.wait_for_load_state("networkidle")  # 等待页面加载完成
+def locate_clickable_icon(page):
+    page.wait_for_load_state("domcontentloaded", timeout=15000)
+    all_elements = extract_clickable_elements(page)
+    filtered_elements = filter_elements(all_elements)
 
-        print("正在扫描可点击元素...")
-        all_elements = extract_clickable_elements(page)
-        filtered_elements = filter_elements(all_elements)
+    # 页面高亮显示最终元素
+    highlight_clickable_elements(page)
 
-        # 页面高亮显示最终元素
-        highlight_clickable_elements(page)
+    # 精简 JSON 并保存
+    compressed = compress_json(filtered_elements)  # filtered_elements 是经过过滤保留的元素
 
-        # 精简 JSON 并保存
-        compressed = compress_json(filtered_elements)  # filtered_elements 是经过过滤保留的元素
-        
-        #highlight_only_kept(page, compressed)  # 高亮最终保留的元素
-        save_to_file(compressed, "clickable_elements_compressed.json")
-
-        # 输出并保存 JSON
-        print("\n=== 最终保留的元素 JSON ===")
-        
-        print(json.dumps(compressed, ensure_ascii=False, indent=2))
-
-        # 自动生成并保存 Playwright 脚本
-        print("\n=== AI 自动生成的 Playwright 脚本 ===")
-        script = generate_playwright_script(compressed, url)
-        print(script)
-        save_to_file(script, "generated_script_filtered.py")
-
-        input("页面已高亮显示元素，按回车后关闭浏览器...")
-        context.close()
-        browser.close()
-
-if __name__ == "__main__":
-    main()
+    #highlight_only_kept(page, compressed)  # 高亮最终保留的元素
+    save_to_file(compressed, "clickable_elements_compressed.json")
+    return compressed

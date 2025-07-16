@@ -1,14 +1,10 @@
 import json
 import requests
-from dotenv import load_dotenv
-import os # 添加os模块用于加载环境变量
-load_dotenv()
 from config import DEEPSEEK_API_KEY, DEEPSEEK_API_URL, DEEPSEEK_MODEL
 
 def call_deepseek_api(
     prompt: str,
     history: list = None,
-    system_message: str = None,
     context: str = None,
     max_tokens: int = 2048
 ) -> str:
@@ -18,14 +14,13 @@ def call_deepseek_api(
     }
 
     messages = []
-    if system_message:
-        messages.append({"role": "system", "content": system_message})
+    messages.append({"role": "system", "content":'你是任务拆分大师，请你根据用户意图，找出完成任务的不可再分的下一步操作对应的传入页面中最合适的元素，不要回答多余的解释，只返回一个传入的json，如果需要填充文本，那么在json里面加上"ans"字段，内容是需要填充的文本，如果没有需要填充的文本，那么不需要这个字段'})
     messages.append({"role": "user", "content": prompt})
 
     if context:
         messages.append({
             "role": "system",
-            "content": f"以下是界面相关的按钮，请结合信息回答\n{context}"
+            "content": f"以下是界面内可操作的元素，请结合信息回答\n{context}"
         })
 
     if history:
