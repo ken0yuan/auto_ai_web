@@ -20,6 +20,7 @@ def main():
         while True:
             operator = PlaywrightOperator(page)
             context = locate_clickable_icon(page)
+            print(context)
             ans = call_deepseek_api(
                 input_task, 
                 chat_history,
