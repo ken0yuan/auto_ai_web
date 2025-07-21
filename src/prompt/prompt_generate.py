@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 import sys
 import os
+import json
 sys.path.append(str(Path(__file__).resolve().parent.parent))  # 添加上级目录到 sys.path
 #print("Current sys.path:", sys.path)
 from dom.dom_elem import extract_dom_tree, DOMElementNode, DOMTextNode
@@ -41,27 +42,30 @@ def clickable_elements_to_string(node, include_attributes=None, depth=0):
         include_attributes = ["id", "name", "aria-label", "placeholder", "title", "role"]
 
     # ✅ 处理文本节点 - 显示所有可见文本
-    if isinstance(node, DOMTextNode):
+    '''if isinstance(node, DOMTextNode):
         if node.parent and node.parent.is_visible and node.parent.is_top_element:
             text = node.text.strip()
             if text:
-                formatted_text.append(text)
+                formatted_text.append(text)'''
 
     # ✅ 处理可点击的元素节点
-    elif isinstance(node, DOMElementNode) and node.highlight_index is not None:
+    if isinstance(node, DOMElementNode) and node.highlight_index is not None:
         # 获取该元素的文本内容
         text = node.get_all_text_till_next_clickable_element()
         attr_str = " ".join(
             f"{k}='{v}'" for k, v in node.attributes.items()
             if k in include_attributes and v
         )
-        line = f"[{node.highlight_index}]<{node.tag_name}"
-        if attr_str:
-            line += f" {attr_str}"
-        if text:
-            line += f" >{text}"
-        line += " />"
-        formatted_text.append(line)
+        if attr_str or text:
+            line = f"[{node.highlight_index}]<{node.tag_name}"
+            if attr_str:
+                line += f" {attr_str}"
+            if text:
+                line += f" >{text}"
+            if node.bounding_box:
+                line += f" [box:{json.dumps(node.bounding_box)}]"
+            line += " />"
+            formatted_text.append(line)
 
     # ✅ 递归处理子节点
     if isinstance(node, DOMElementNode):

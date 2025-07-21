@@ -1303,6 +1303,16 @@
       children: [],
     };
 
+    const rect = getCachedBoundingRect(node);
+    if (rect) {
+      nodeData.boundingBox = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
     // Get attributes for interactive elements or potential text containers
     if (isInteractiveCandidate(node) || node.tagName.toLowerCase() === 'iframe' || node.tagName.toLowerCase() === 'body') {
       const attributeNames = node.getAttributeNames?.() || [];

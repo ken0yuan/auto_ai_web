@@ -26,16 +26,16 @@ class DOMTextNode:
 # ========== 元素节点 ==========
 class DOMElementNode:
     def __init__(self, tag_name: str, xpath: str, attributes: Dict[str, str],
-                 is_visible: bool = False):
-        self.tag_name: str = tag_name
-        self.xpath: str = xpath
-        self.attributes: Dict[str, str] = attributes
-        self.is_visible: bool = is_visible
-
-        self.is_interactive: bool = False
-        self.is_top_element: bool = False
-        self.highlight_index: Optional[int] = None
-
+                 is_visible: bool = False,
+                 bounding_box: Optional[Dict[str, float]] = None):
+        self.tag_name = tag_name
+        self.xpath = xpath
+        self.attributes = attributes
+        self.is_visible = is_visible
+        self.bounding_box = bounding_box or {}
+        self.is_interactive = False
+        self.is_top_element = False
+        self.highlight_index = None
         self.children: List[Union["DOMElementNode", DOMTextNode]] = []
         self.parent: Optional["DOMElementNode"] = None
 
@@ -115,6 +115,7 @@ class DOMTreeBuilder:
             xpath=node_data.get("xpath", ""),
             attributes=node_data.get("attributes", {}),
             is_visible=node_data.get("isVisible", False),
+            bounding_box=node_data.get("boundingBox"),
         )
         node.is_top_element = node_data.get("isTopElement", False)
         node.is_interactive = node_data.get("isInteractive", False)
@@ -125,6 +126,25 @@ class DOMTreeBuilder:
             node.highlight_index = hash(node.xpath) % 100000  # 简单生成一个唯一 id
 
         return node, node_data.get("children", [])
+
+def get_related_elements(node: Union[DOMElementNode, DOMTextNode]) -> List[DOMElementNode]:
+    """
+    获取与给定节点相关的所有可点击元素
+    """
+    related_elements = []
+    
+    if isinstance(node, DOMElementNode) and node.highlight_index is not None:
+        # 如果是可点击元素，直接添加
+        related_elements.append(node)
+    
+    # ✅ 递归处理子节点，查找所有可点击元素
+    if isinstance(node, DOMElementNode):
+        for child in getattr(node, "children", []):
+            child_results = get_related_elements(child)
+            if child_results:
+                related_elements.extend(child_results)
+    
+    return related_elements
 
 # ========== Playwright 执行 + DOM 树解析 ==========
 async def extract_dom_tree(page, js_path: str) -> Tuple[DOMElementNode, dict]:
@@ -172,7 +192,7 @@ if __name__ == "__main__":
         print(root)
         print("\n=== INTERACTIVE ELEMENTS ===")
         for idx, node in selector_map.items():
-            print(f"[{idx}] {node.tag_name} {node.attributes} ")
+            print(f"{node.highlight_index} {node.tag_name} {node.attributes} ")
         await asyncio.sleep(20)  # 等待20秒以查看结果
         
         # 在测试代码结束时关闭浏览器
