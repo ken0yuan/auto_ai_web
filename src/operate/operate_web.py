@@ -12,6 +12,68 @@ logger = logging.getLogger(__name__)
 Context = TypeVar('Context')
 
 # 假设你的DOMElementNode和DOMTextNode类已经定义
+
+def extract_json_from_response(response: str) -> tuple[str, str, list]:
+    """
+    从模型返回的字符串中提取thought、task和place
+    假设返回格式为 {"thinking": "...", "task": "...", "box": {"左上角坐标": "(x1, y1)", "右下角坐标": "(x2, y2)"}}
+    将box转换为长度为4的数组 [x1, y1, x2, y2]
+    """
+    try:
+        # 首先尝试提取 ```json 代码块中的内容
+        json_str = response.strip()
+        
+        # 检查是否包含代码块标记
+        if "```json" in json_str:
+            import re
+            # 提取 ```json 和 ``` 之间的内容
+            json_match = re.search(r'```json\s*\n?(.*?)\n?```', json_str, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1).strip()
+        
+        # 解析JSON
+        data = json.loads(json_str)
+        thought = data.get("thinking", "")
+        task = data.get("task", "")
+        box_data = data.get("box", {})
+        
+        # 解析坐标并转换为数组
+        place = []
+        if isinstance(box_data, dict):
+            top_left = box_data.get("左上角坐标", "")
+            bottom_right = box_data.get("右下角坐标", "")
+            
+            # 提取坐标值
+            try:
+                # 使用正则表达式提取坐标
+                import re
+                
+                # 提取左上角坐标 (x1, y1)
+                top_left_match = re.search(r'\(([\d.]+),\s*([\d.]+)\)', top_left)
+                if top_left_match:
+                    x1, y1 = float(top_left_match.group(1)), float(top_left_match.group(2))
+                else:
+                    x1, y1 = 0.0, 0.0
+                
+                # 提取右下角坐标 (x2, y2)
+                bottom_right_match = re.search(r'\(([\d.]+),\s*([\d.]+)\)', bottom_right)
+                if bottom_right_match:
+                    x2, y2 = float(bottom_right_match.group(1)), float(bottom_right_match.group(2))
+                else:
+                    x2, y2 = 0.0, 0.0
+                
+                place = [x1, y1, x2, y2]
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"解析坐标失败: {e}")
+                place = [0.0, 0.0, 0.0, 0.0]
+        else:
+            place = [0.0, 0.0, 0.0, 0.0]
+        
+        return thought, task, place
+    except json.JSONDecodeError:
+        logger.error("无法解析模型返回的JSON格式")
+        return "", "", [0.0, 0.0, 0.0, 0.0]
+
 class DOMTextNode:
     def __init__(self, text: str):
         self.text = text
