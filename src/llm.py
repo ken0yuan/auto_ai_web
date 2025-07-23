@@ -14,7 +14,7 @@ def generate_opera(
     }
 
     messages = []
-    messages.append({"role": "system", "content":"你是一个任务完成大师，你需要完成的任务是{task}\n网页相关信息如下{context}\n，你需要返回的是一个json格式的操作，包含操作种类(包含click, input, search, navigate, wait, scroll, select)，操作对象序号和填写内容（如果不需要填写则为空）。返回示例如下['[操作：click，对象：登录链接，内容：]', '[操作：input，对象：8，内容：用户名]','[操作：click，对象：提交按钮，内容：]',]"})
+    messages.append({"role": "system", "content":"你是一个任务完成大师，你需要完成的任务是{task}\n网页相关信息如下{context}\n，你需要返回的是一个json格式的完成的任务描述和操作，操作包含操作种类(包含click, input, search, navigate, wait, scroll, select)(如果需要翻页，只能进行翻页操作，不能有其他操作)，操作对象序号(只能是数字序号)和填写内容（如果不需要填写则为空）。返回示例如下['[任务描述：完成了名字的填写]','[操作：click，对象：登录链接，内容：]', '[操作：input，对象：8，内容：用户名]','[操作：click，对象：提交按钮，内容：]','[操作：scroll，对象：，内容：300]','[操作：wait，对象：，内容：10]']"})
     messages.append({"role": "user", "content": task})
 
     if context:
@@ -73,20 +73,35 @@ def ui_analyzer(
         "Content-Type": "application/json"
     }
 
+    # ✅ 正确顺序：先加入历史
+    history_text = ""
+    if history:
+        for h in history:
+            if h["role"] == "user":
+                history_text += f"\n- 已经完成的任务：{h['content']}"
+            elif h["role"] == "assistant":
+                history_text += f"\n- 已完成操作：{h['content']}"
+    
+    if system_message:
+        system_message = system_message.replace("{history_text}", history_text).replace("{user_task}", prompt)
+
     messages = []
     if system_message:
         messages.append({"role": "system", "content": system_message})
-    messages.append({"role": "user", "content": prompt})
 
-    if history:
-        messages.extend(history)
-
+    # ✅ 再加入当前 user prompt
     if image_base64:
-        messages[1]["content"] = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
-        ]
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
+            ]
+        })
+    else:
+        messages.append({"role": "user", "content": prompt})
 
+    #print(messages)
 
     payload = {
         "model": QWEN_MODEL,

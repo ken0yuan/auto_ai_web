@@ -171,6 +171,22 @@ async def extract_dom_tree(page, js_path: str) -> Tuple[DOMElementNode, dict]:
     }
 
     logger.debug(f"🔧 Running JavaScript DOM analysis for {await page.title()} ({page.url})...")
+    
+    # ✅ 强制清除任何之前的高亮和缓存
+    await page.evaluate("""
+        // 清除之前的高亮容器
+        const existingContainer = document.getElementById('playwright-highlight-container');
+        if (existingContainer) {
+            existingContainer.remove();
+        }
+        
+        // 清除可能的缓存
+        if (window._highlightCleanupFunctions) {
+            window._highlightCleanupFunctions.forEach(fn => fn());
+            window._highlightCleanupFunctions = [];
+        }
+    """)
+    
     eval_page: dict = await page.evaluate(js_code, args)
     logger.debug("✅ JavaScript DOM analysis completed")
 

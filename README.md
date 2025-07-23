@@ -7,3 +7,7 @@
 他把消息存在了一个叫做message manager里面，browser和control完成了所有的网页操作
 
 需要知道的是，他调用大模型的方式是self.llm.ainvoke(input_messages, output_format=self.AgentOutput)
+
+下面需要改进的点：
+- 当前页面因为错误点击，但是认为这个操作是成功的，导致历史出错，无法成功（考虑暂时不用历史，只参考图，让他自己评价已经完成的任务）
+- select操作有误，无法select（修！）

@@ -14,8 +14,9 @@ from pathlib import Path
 
 def extract_operations(response: str):
     """
-    从模型返回的字符串中提取操作列表
-    支持从包含说明文本的响应中提取JSON数组，并转换为标准格式
+    从模型返回的字符串中提取任务描述和操作列表
+    输入格式：['[任务描述：完成了名字的填写]','[操作：click，对象：登录链接，内容：]', '[操作：input，对象：8，内容：用户名]',...]
+    返回：(task_description, operations_list)
     """
     def convert_to_standard_format(operations):
         """将不同格式的操作转换为标准字符串格式"""
@@ -34,10 +35,29 @@ def extract_operations(response: str):
                 standard_operations.append(op)
         return standard_operations
     
+    def parse_operations_array(operations_array):
+        """解析操作数组，分离任务描述和操作"""
+        task_description = ""
+        operations = []
+        
+        for item in operations_array:
+            if isinstance(item, str):
+                # 检查是否是任务描述
+                if item.startswith('[任务描述：') and item.endswith(']'):
+                    task_description = item[5:-1]  # 去掉 '[任务描述：' 和 ']'
+                # 检查是否是操作
+                elif item.startswith('[操作：') and item.endswith(']'):
+                    operations.append(item)
+                else:
+                    # 其他格式的操作，直接添加
+                    operations.append(item)
+        
+        return task_description, convert_to_standard_format(operations)
+    
     try:
         # 首先尝试直接解析整个响应
-        operations = json.loads(response)
-        return convert_to_standard_format(operations)
+        operations_array = json.loads(response)
+        return parse_operations_array(operations_array)
     except json.JSONDecodeError:
         # 如果失败，尝试从文本中提取JSON数组
         import re
@@ -47,8 +67,8 @@ def extract_operations(response: str):
         if json_match:
             try:
                 json_str = json_match.group(1)
-                operations = json.loads(json_str)
-                return convert_to_standard_format(operations)
+                operations_array = json.loads(json_str)
+                return parse_operations_array(operations_array)
             except json.JSONDecodeError:
                 print(f"无法解析提取的JSON: {json_str}")
         
@@ -57,14 +77,14 @@ def extract_operations(response: str):
         if array_match:
             try:
                 array_str = '[' + array_match.group(1) + ']'
-                operations = json.loads(array_str)
-                return convert_to_standard_format(operations)
+                operations_array = json.loads(array_str)
+                return parse_operations_array(operations_array)
             except json.JSONDecodeError:
                 print(f"无法解析提取的数组: {array_str}")
         
         print("无法从响应中提取操作列表，请检查模型返回格式")
         print(f"原始响应: {response[:200]}...")  # 打印前200字符用于调试
-        return []
+        return "", []
 
 def call_with_retry(func, max_retries=3, delay=2, *args, **kwargs):
     """
@@ -147,11 +167,11 @@ async def main():
             
             # 检查UI分析器调用是否成功
             if response.startswith("函数") or response.startswith("API错误") or response.startswith("调用API失败"):
-                print(f"UI分析器调用失败: {response}")
+                #print(f"UI分析器调用失败: {response}")
                 print("跳过本次循环...")
                 continue
                 
-            print(f"\nUI分析器返回：{response}")
+            #print(f"\nUI分析器返回：{response}")
             thought, task, place = extract_json_from_response(response)
             elements = get_related_elements(state.element_tree)
             prompt = format_browser_state_prompt(state, place)
@@ -175,7 +195,10 @@ async def main():
                 print("跳过本次循环...")
                 continue
             print(f"\n操作生成器返回：{ans}")
-            operations = extract_operations(ans)
+            task_description, operations = extract_operations(ans)
+            
+            print(f"任务描述: {task_description}")
+            print(f"操作列表: {operations}")
             
             # 执行操作
             if operations:
@@ -186,6 +209,12 @@ async def main():
                 print("没有提取到有效的操作列表")
                 
             chat_history.append({"role": "user", "content": task})
+            chat_history.append({"role": "assistant", "content": ans})
+            # 使用提取的任务描述来更新input_task
+            if task_description:
+                input_task = f"请继续执行任务，直到完成。上一步任务：{task_description}\n请继续执行任务，直到完成。"
+            else:
+                input_task = ("请继续执行任务，直到完成。当前任务描述：" + task + "\n请继续执行任务，直到完成。")
 
             # 依次执行操作
             print("\n开始执行操作：")

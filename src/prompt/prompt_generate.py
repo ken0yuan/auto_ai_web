@@ -42,7 +42,7 @@ def include_node(bounding_box, place):
     """
     if not bounding_box:
         return False
-    #print(f"Bounding box: {bounding_box}, Place: {place}")
+    print(f"Bounding box: {bounding_box}")
     x1, y1, x2, y2 = bounding_box['x'], bounding_box['y'], bounding_box['width'], bounding_box['height']
     return (place[0] <= x1 <= place[2] or place[0] <= x1+x2 <= place[2]) and\
            (place[1] <= y1 <= place[3] or place[1] <= y1+y2 <= place[3]) and\
@@ -118,6 +118,10 @@ def format_browser_state_prompt(state: BrowserStateSummary, place) -> str:
     #print(place_text)
     # 可交互元素
     elements_text = clickable_elements_to_string(state.element_tree, place=place_pixels)
+    print(f"📍 视口信息: {pi.viewport_width}x{pi.viewport_height}, 滚动位置: {pi.scroll_y}")
+    print(f"📍 Place区域: {place_text}")
+    print(f"📍 可交互元素数量: {len(elements_text.split('/>')) - 1 if elements_text else 0}")
+    print(f"可交互元素文本: {elements_text}")
     if not elements_text:
         elements_text = "当前视口内没有可交互的元素"
     else:
@@ -167,7 +171,12 @@ async def get_updated_state(page, js_path: str) -> BrowserStateSummary:
         tabs.append(TabInfo(i, pg.url, await pg.title()))
 
     # Page Info
-    viewport = page.viewport_size or {"width": 1920, "height": 1080}
+    viewport = await page.evaluate('''() => {
+    return {
+        width: window.innerWidth,
+        height: window.innerHeight
+    };
+    }''')
     page_width = await page.evaluate("document.documentElement.scrollWidth")
     page_height = await page.evaluate("document.documentElement.scrollHeight")
     scroll_y = await page.evaluate("window.scrollY")
