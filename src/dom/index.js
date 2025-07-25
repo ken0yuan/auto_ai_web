@@ -1,20 +1,38 @@
+/**
+ * ================================
+ * ✅ 文件功能总述
+ * ================================
+ * 1. 遍历页面 DOM，生成一个用于 Python 端（dom_elem.py）的 DOM 树。
+ * 2. 识别交互元素（可点击/可输入），并根据视口情况决定是否高亮。
+ * 3. 返回一个 `{ rootId, map: DOM_HASH_MAP }`，map 里存放节点信息，rootId 为 body 节点。
+ * （以下内容暂不考虑）
+ * 🔍 主要改进点：
+ *  - 对交互元素的识别很复杂（isInteractiveElement, isElementDistinctInteraction）。
+ *  - 仅返回有限的字段（tagName, attributes, xpath, boundingBox, highlightIndex...）。
+ *  - 对文本节点有严格可见性判断，部分信息可能丢失。
+ * 
+ * 如果你觉得获取的信息不够完整，可在：
+ *  - buildDomTree 中添加更多字段（innerText、outerHTML、style 信息）。
+ *  - 放宽 isTextNodeVisible/isElementVisible 的过滤。
+ */
 (
   args = {
-    doHighlightElements: true,
-    focusHighlightIndex: -1,
-    viewportExpansion: 0,
-    debugMode: false,
-  }
+  doHighlightElements: true,        // 是否真的在页面上高亮标注
+  focusHighlightIndex: -1,          // 若 ≥0，仅高亮指定 index
+  viewportExpansion: 0,             // 视口扩展，-1 表示忽略视口限制
+  debugMode: false,                 // 调试模式，控制日志
+}
 ) => {
   const { doHighlightElements, focusHighlightIndex, viewportExpansion, debugMode } = args;
   let highlightIndex = 0; // Reset highlight index
 
   // Add caching mechanisms at the top level
   const DOM_CACHE = {
-    boundingRects: new WeakMap(),
-    clientRects: new WeakMap(),
-    computedStyles: new WeakMap(),
-    clearCache: () => {
+    boundingRects: new WeakMap(),     // 缓存 getBoundingClientRect(用来获取元素的位置以及大小相关的信息。)
+    clientRects: new WeakMap(),       // 缓存 getClientRects(用来获取元素的可见区域信息。)
+    computedStyles: new WeakMap(),    // 缓存 getComputedStyle(用来获取元素的计算样式信息。)
+    //元素的计算样式(computedStyle)是一组在显示元素时实际使用的属性值，
+    clearCache: () => {               // 每次遍历前清空
       DOM_CACHE.boundingRects = new WeakMap();
       DOM_CACHE.clientRects = new WeakMap();
       DOM_CACHE.computedStyles = new WeakMap();
@@ -22,7 +40,7 @@
   };
 
   /**
-   * Gets the cached bounding rect for an element.
+   * Gets the cached bounding rect for an element.获取缓存元素的bounding rect
    *
    * @param {HTMLElement} element - The element to get the bounding rect for.
    * @returns {DOMRect | null} The cached bounding rect, or null if the element is not found.
@@ -30,7 +48,7 @@
   function getCachedBoundingRect(element) {
     if (!element) return null;
 
-    if (DOM_CACHE.boundingRects.has(element)) {
+    if (DOM_CACHE.boundingRects.has(element)) {//如果缓存中有该元素的bounding rect
       return DOM_CACHE.boundingRects.get(element);
     }
 
@@ -43,7 +61,7 @@
   }
 
   /**
-   * Gets the cached computed style for an element.
+   * Gets the cached computed style for an element.获取缓存的计算后样式
    *
    * @param {HTMLElement} element - The element to get the computed style for.
    * @returns {CSSStyleDeclaration | null} The cached computed style, or null if the element is not found.
@@ -89,14 +107,14 @@
    *
    * @type {Object<string, any>}
    */
-  const DOM_HASH_MAP = {};
+  const DOM_HASH_MAP = {};// 存放最终返回的节点数据
 
-  const ID = { current: 0 };
+  const ID = { current: 0 };// 自增 ID，用于dom hash map 的 key
 
-  const HIGHLIGHT_CONTAINER_ID = "playwright-highlight-container";
+  const HIGHLIGHT_CONTAINER_ID = "playwright-highlight-container";// 用于存放高亮元素的容器 ID
 
   // Add a WeakMap cache for XPath strings
-  const xpathCache = new WeakMap();
+  const xpathCache = new WeakMap();// XPath 缓存，避免重复计算
 
   // // Initialize once and reuse
   // const viewportObserver = new IntersectionObserver(
@@ -366,28 +384,40 @@
       return 0; // No parent means no siblings
     }
 
-    const tagName = currentElement.nodeName.toLowerCase();
+    const tagName = currentElement.nodeName.toLowerCase();//获得当前元素的标签名
 
     const siblings = Array.from(currentElement.parentElement.children)
-      .filter((sib) => sib.nodeName.toLowerCase() === tagName);
+      .filter((sib) => sib.nodeName.toLowerCase() === tagName);// 获取同类型的兄弟元素
 
     if (siblings.length === 1) {
       return 0; // Only element of its type
     }
 
-    const index = siblings.indexOf(currentElement) + 1; // 1-based index
+    const index = siblings.indexOf(currentElement) + 1; // 1-based index(不理解为什么要从1开始)
     return index;
   }
 
 
+  /**
+   * ✅ 生成 XPath
+   * 设计原因：
+   *  - 需要唯一标识 DOM 元素。
+   *  - 结合 parent + tagName + 同类兄弟顺序。
+   */
   function getXPathTree(element, stopAtBoundary = true) {
     if (xpathCache.has(element)) return xpathCache.get(element);
 
     const segments = [];
     let currentElement = element;
 
-    while (currentElement && currentElement.nodeType === Node.ELEMENT_NODE) {
-      // Stop if we hit a shadow root or iframe
+    while (currentElement && currentElement.nodeType === Node.ELEMENT_NODE) {//如果当前元素种类是 Element
+      // Stop if we hit a shadow root or iframe如果当前元素的父节点是 ShadowRoot 或 iframe
+      // Iframe是HTML中的一个元素，用于在文档中嵌入另一个文档。
+      // Iframe元素充当了一个独立的窗口，它可以加载外部的HTML页面并在主页面中显示。
+      // Shadow DOM 是一种浏览器技术，它提供了一种在HTML元素中创建封闭的DOM子树的方法。
+      // 通过Shadow DOM，我们可以将样式、脚本和标记封装在一个独立的作用域中，以避免与其他元素的冲突。
+      // Shadow DOM 的功能是通过ShadowRoot节点实现的，
+      // 我们可以将ShadowRoot节点插入到其他DOM元素中，并将其作为该元素的私有成员。
       if (
         stopAtBoundary &&
         (currentElement.parentNode instanceof ShadowRoot ||
@@ -398,17 +428,21 @@
 
       const position = getElementPosition(currentElement);
       const tagName = currentElement.nodeName.toLowerCase();
-      const xpathIndex = position > 0 ? `[${position}]` : "";
-      segments.unshift(`${tagName}${xpathIndex}`);
+      const xpathIndex = position > 0 ? `[${position}]` : "";//xpathIndex 是当前元素在同类兄弟中的位置，如果为0则不加索引
+      segments.unshift(`${tagName}${xpathIndex}`);// 将当前元素的标签名和索引添加到路径段中
 
-      currentElement = currentElement.parentNode;
+      currentElement = currentElement.parentNode;// 递推父节点增加路径
     }
 
     const result = segments.join("/");
     xpathCache.set(element, result);
     return result;
   }
-
+  /**
+   * ✅ 判断文本节点是否可见
+   * - 通过 range.getClientRects 检查是否在视口
+   * - 同时检查父元素的 CSS display/visibility
+   */
   /**
    * Checks if a text node is visible.
    *
@@ -418,7 +452,7 @@
   function isTextNodeVisible(textNode) {
     try {
       // Special case: when viewportExpansion is -1, consider all text nodes as visible
-      if (viewportExpansion === -1) {
+      if (viewportExpansion === -1) {//如果忽略视口限制
         // Still check parent visibility for basic filtering
         const parentElement = textNode.parentElement;
         if (!parentElement) return false;
@@ -436,9 +470,10 @@
             style.opacity !== '0';
         }
       }
-
+      // 在JavaScript中用于创建一个新的 Range 对象。
+      // 这个对象可以表示文档中的一个连续区域，并允许你获取或修改这个区域的内容。
       const range = document.createRange();
-      range.selectNodeContents(textNode);
+      range.selectNodeContents(textNode);//选择textnode的子节点？不理解，也可能是因为不可能传空吧
       const rects = range.getClientRects(); // Use getClientRects for Range
 
       if (!rects || rects.length === 0) {
@@ -491,7 +526,10 @@
       return false;
     }
   }
-
+  /**
+   * ✅ 判断元素是否可接受进入 DOM 树
+   * - 过滤 <svg>, <script>, <style> 等无意义节点
+   */
   /**
    * Checks if an element is accepted.
    *
@@ -537,7 +575,12 @@
       style?.display !== "none"
     );
   }
-
+  /**
+   * ✅ 判断是否交互元素（核心函数）
+   * 设计原因：
+   *  - 结合 tagName、cursor、role、事件监听器多层判断。
+   *  - 适配常见按钮、链接、输入框、下拉框等。
+   */
   /**
    * Checks if an element is interactive.
    * 
@@ -610,10 +653,10 @@
      * @returns {boolean} Whether the element has an interactive pointer.
      */
     function doesElementHaveInteractivePointer(element) {
-      if (element.tagName.toLowerCase() === "html") return false;
-
+      if (element.tagName.toLowerCase() === "html") return false;//如果是html
+      //cursor 属性设置或返回鼠标指针显示的光标类型
       if (style?.cursor && interactiveCursors.has(style.cursor)) return true;
-
+      //？.不会因为元素不存在就报错
       return false;
     }
 
@@ -696,25 +739,25 @@
     }
 
     // ✅ Special handling for div elements that contain form field labels
-    if (tagName === 'div') {
+    //if (tagName === 'div') {
       // Check if this div contains text that looks like a form field label
-      const textContent = element.textContent?.trim();
-      if (textContent) {
+    //  const textContent = element.textContent?.trim();
+    //  if (textContent) {
         // Check if this div is near a form input element or is part of a form structure
-        const hasNearbyInput = element.querySelector('input, select, textarea') ||
-                              element.parentElement?.querySelector('input, select, textarea') ||
-                              element.nextElementSibling?.tagName?.toLowerCase().match(/^(input|select|textarea)$/) ||
-                              element.previousElementSibling?.tagName?.toLowerCase().match(/^(input|select|textarea)$/);
+    //    const hasNearbyInput = element.querySelector('input, select, textarea') ||
+    //                          element.parentElement?.querySelector('input, select, textarea') ||
+    //                          element.nextElementSibling?.tagName?.toLowerCase().match(/^(input|select|textarea)$/) ||
+    //                          element.previousElementSibling?.tagName?.toLowerCase().match(/^(input|select|textarea)$/);
         
         // Check if this div is inside a form or fieldset
-        const isInFormContext = element.closest('form, fieldset');
+    //    const isInFormContext = element.closest('form, fieldset');
         
         // If it's a short text (likely a label) and is in form context, make it interactive
-        if (textContent.length < 50 && (hasNearbyInput || isInFormContext)) {
-          return true;
-        }
-      }
-    }
+    //    if (textContent.length < 50 && (hasNearbyInput || isInFormContext)) {
+    //      return true;
+    //    }
+    //  }
+    //}
 
     // Added enhancement to capture dropdown interactive elements
     if (element.classList && (
@@ -956,7 +999,7 @@
 
   /**
    * Checks if an element is an interactive candidate.
-   *
+   * 先初步筛选
    * @param {HTMLElement} element - The element to check.
    * @returns {boolean} Whether the element is an interactive candidate.
    */
@@ -1000,7 +1043,8 @@
    *
    * This function helps detect deeply nested actionable elements (e.g., menu items within a button)
    * that may not be picked up by strict interactivity checks.
-   *
+   * 此功能有助于检测深层嵌套的可操作元素（例如，按钮内的菜单项）
+   * 这可能不会被严格的交互性检查所发现。
    * @param {HTMLElement} element - The element to check.
    * @returns {boolean} Whether the element is heuristically interactive.
    */
@@ -1121,6 +1165,11 @@
   // --- End distinct interaction check ---
 
   /**
+   * ✅ 判断元素是否应分配交互 index 并高亮
+   * - parent 已经高亮 → 需要判断子元素是否为“独立交互”
+   * - 赋值 highlightIndex 并实际绘制边框
+   */
+  /**
    * Handles the logic for deciding whether to highlight an element and performing the highlight.
    * @param {
     {
@@ -1193,7 +1242,8 @@
    * @returns {string | null} The ID of the node data object, or null if the node is not processed.
    */
   function buildDomTree(node, parentIframe = null, isParentHighlighted = false) {
-    // Fast rejection checks first
+    // Fast rejection checks first立即过滤掉无效节点：
+    // 空节点，高亮容器节点（避免干扰），非元素节点和非文本节点
     if (!node || node.id === HIGHLIGHT_CONTAINER_ID ||
       (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE)) {
       return null;

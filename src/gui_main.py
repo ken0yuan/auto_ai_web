@@ -25,6 +25,51 @@ from dom.dom_elem import get_related_elements
 from prompt.prompt_generate import get_updated_state, format_browser_state_prompt
 from Prompts import ui_analyzer_expert
 from main import extract_operations  # 只用到这个，call_with_retry换成异步版
+from playwright.async_api import Browser, BrowserContext, Page
+
+ENHANCED_PAGE_INIT_SCRIPT = """
+(() => {
+    // 确保脚本只被初始化一次
+    if (window._eventListenerTrackerInitialized) return;
+    window._eventListenerTrackerInitialized = true;
+
+    // 原始的 addEventListener 函数
+    const originalAddEventListener = EventTarget.prototype.addEventListener;
+    // 使用 WeakMap 来存储每个元素的事件监听器，避免内存泄漏
+    const eventListenersMap = new WeakMap();
+
+    // 重写 addEventListener
+    EventTarget.prototype.addEventListener = function(type, listener, options) {
+        if (typeof listener === "function") {
+            let listeners = eventListenersMap.get(this);
+            if (!listeners) {
+                listeners = [];
+                eventListenersMap.set(this, listeners);
+            }
+            listeners.push({
+                type,
+                listener,
+                // 只记录函数的前100个字符作为预览，避免存储过多信息
+                listenerPreview: listener.toString().slice(0, 100),
+                options
+            });
+        }
+        // 调用原始的 addEventListener，保持原有功能
+        return originalAddEventListener.call(this, type, listener, options);
+    };
+
+    // 定义一个新的全局函数，用于获取元素的监听器
+    window.getEventListenersForNode = (node) => {
+        const listeners = eventListenersMap.get(node) || [];
+        // 返回一个简化的监听器信息列表，对外部调用者友好
+        return listeners.map(({ type, listenerPreview, options }) => ({
+            type,
+            listenerPreview,
+            options
+        }));
+    };
+})();
+"""
 
 
 # ✅ 改造：异步的 call_with_retry（避免阻塞）
@@ -82,7 +127,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Web 自动化 GUI")
-        self.resize(1100, 750)  # ✅ 页面更大
+        self.resize(1500, 1050)  # ✅ 页面更大
 
         main_layout = QVBoxLayout()
         self.url_input = QLineEdit()
@@ -116,7 +161,7 @@ class MainWindow(QWidget):
             background-color: #1e1e1e;
             color: #e0e0e0;
             font-family: "Segoe UI", "Microsoft YaHei UI", "SF Pro Display", sans-serif;
-            font-size: 25px;  /* ✅ 字体更大 */
+            font-size: 50px;  /* ✅ 字体更大 */
         }
         QLabel {
             color: #cfcfcf;
@@ -126,35 +171,35 @@ class MainWindow(QWidget):
             background-color: #2b2b2b;
             color: #ffffff;
             border: 1px solid #3a3a3a;
-            border-radius: 10px;
-            padding: 10px;
-            font-size: 18px;
+            border-radius: 20px;
+            padding: 20px;
+            font-size: 38px;
         }
         QPushButton {
             background-color: #4a90e2;
             color: white;
             border: none;
-            border-radius: 10px;
-            padding: 12px;   /* ✅ 按钮更大 */
+            border-radius: 20px;
+            padding: 22px;   /* ✅ 按钮更大 */
             font-weight: bold;
-            font-size: 18px;
+            font-size: 38px;
         }
         QPushButton:hover {
             background-color: #5aa0f2;
         }
         #ChatCard {
             background-color: #2b2b2b;
-            border-radius: 12px;
-            padding: 12px;
+            border-radius: 22px;
+            padding: 22px;
             border: 1px solid #3a3a3a;
         }
         QTextEdit {
             background-color: #1e1e1e;
             color: #dcdcdc;
             border: 1px solid #444444;
-            border-radius: 8px;
-            padding: 8px;
-            font-size: 17px;
+            border-radius: 18px;
+            padding: 18px;
+            font-size: 27px;
         }
         """
 
@@ -186,8 +231,10 @@ class MainWindow(QWidget):
     async def run_main_logic(self, input_website, input_task):
         chat_history = []
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
-            context = await browser.new_context(no_viewport=True)
+            browser = await p.chromium.launch(headless=False,args=["--start-maximized"])
+            context = await browser.new_context(no_viewport=True,color_scheme="dark")  # ✅ 禁用固定 viewport，使用暗色主题
+            await context.add_init_script(ENHANCED_PAGE_INIT_SCRIPT)
+            # ✅ 直接使用输入的网址
             page = await context.new_page()
             await page.goto(input_website)
             # ✅ 只创建一次 WebController

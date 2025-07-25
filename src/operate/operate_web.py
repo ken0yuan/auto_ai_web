@@ -3,7 +3,7 @@ import json
 import logging
 import re
 from typing import Generic, TypeVar, Any, Dict, List, Optional, Union
-from playwright.sync_api import Page, BrowserContext
+from playwright.sync_api import Page, BrowserContext, Locator
 from pydantic import BaseModel
 from dataclasses import dataclass
 
@@ -114,13 +114,22 @@ class NavigateAction(BaseAction):
 class WaitAction(BaseAction):
     seconds: float = 3.0  # 内容：等待时间
 
+# <<< MODIFIED >>> - 使 scroll 功能更强大
 class ScrollAction(BaseAction):
-    direction: str = "down"  # 对象：滚动方向 up/down
-    distance: int = 500  # 内容：滚动距离
+    direction: str = "down"
+    # 新增 target，可以滚动页面或特定元素
+    target: Optional[str] = None 
+    # 使用 num_pages 代替 distance，对LLM更友好
+    num_pages: float = 1.0  
 
+# <<< MODIFIED >>> - Pydantic模型保持不变，但其实现会更强大
 class SelectAction(BaseAction):
-    target: str  # 对象：下拉框的编号或选择器
-    option: str  # 内容：要选择的选项文本
+    target: str
+    option: str  # 要选择的选项文本
+
+# <<< NEW >>> - 为获取下拉框选项新增模型
+class GetDropdownOptionsAction(BaseAction):
+    target: str # 下拉框的编号或选择器
 
 # 操作结果
 @dataclass
@@ -377,22 +386,71 @@ class WebController(Generic[Context]):
                 return ActionResult(success=False, error=f"输入失败: {str(e)}")
         
         @self.registry.action(
-            '选择下拉框选项，target是下拉框的编号或定位器，option是要选择的选项文本',
+            '获取原生HTML下拉框(<select>)的所有选项。target是下拉框的编号或选择器。',
+            param_model=GetDropdownOptionsAction
+        )
+        async def get_dropdown_options(params: GetDropdownOptionsAction):
+            current_page = self.get_current_page()
+            if not current_page:
+                return ActionResult(success=False, error="没有可用页面")
+
+            try:
+                locator = await self._find_locator(current_page, params.target)
+                if not locator:
+                    return ActionResult(success=False, error=f"找不到元素: {params.target}")
+
+                # 确认是 <select> 元素
+                tag_name = await locator.evaluate('el => el.tagName.toLowerCase()')
+                if tag_name != 'select':
+                    msg = f"元素 {params.target} 是一个 <{tag_name}>, 而不是 <select>。请使用 'click' 打开它，然后点击你想要的选项。"
+                    return ActionResult(success=False, error=msg, message=msg)
+                
+                # 执行JS获取所有选项
+                options = await locator.evaluate('''
+                    (select) => Array.from(select.options).map(opt => ({
+                        text: opt.text,
+                        value: opt.value,
+                        index: opt.index
+                    }))
+                ''')
+
+                if not options:
+                    return ActionResult(success=True, message=f"下拉框 {params.target} 中没有找到选项。", extracted_content="无可用选项")
+
+                # 格式化输出给AI
+                formatted_options = []
+                for opt in options:
+                    # 使用json.dumps确保文本中的特殊字符(如引号)被正确处理
+                    encoded_text = json.dumps(opt['text']) 
+                    formatted_options.append(f"{opt['index']}: text={encoded_text}")
+
+                msg = "可用选项:\n" + "\n".join(formatted_options)
+                msg += "\n\n提示: 使用 'select_option' 动作和选项的 'text' 值来选择。"
+                logger.info(f"🔍 成功获取下拉框 {params.target} 的选项。")
+                return ActionResult(success=True, message=msg, extracted_content=msg)
+
+            except Exception as e:
+                return ActionResult(success=False, error=f"获取选项失败: {str(e)}")
+
+        # <<< MODIFIED >>> - 增强 select_option 动作
+        @self.registry.action(
+            '选择下拉框的选项。对于原生下拉框，直接选择。对于自定义下拉框，会先尝试点击打开，再选择选项。target是下拉框的编号或选择器，option是要选择的选项文本。',
             param_model=SelectAction
         )
-        async def select_option(params: SelectAction):
+        async def select_option(params: SelectAction): # 函数名保持不变
             current_page = self.get_current_page()
             if not current_page:
                 return ActionResult(success=False, error="没有可用页面")
             
             try:
+                # _try_select_option 方法将被重构以处理两种情况
                 success = await self._try_select_option(current_page, params.target, params.option)
                 if success:
-                    msg = f"🔽 成功选择 {params.target} 的选项: {params.option}"
+                    msg = f"✅ 成功在 {params.target} 中选择了选项: {params.option}"
                     logger.info(msg)
                     return ActionResult(success=True, message=msg, extracted_content=msg)
                 else:
-                    return ActionResult(success=False, error=f"无法选择选项: {params.target} -> {params.option}")
+                    return ActionResult(success=False, error=f"无法选择选项: {params.target} -> {params.option}。请确认目标和选项文本是否正确，或尝试滚动。")
             except Exception as e:
                 return ActionResult(success=False, error=f"选择失败: {str(e)}")
         
@@ -453,6 +511,84 @@ class WebController(Generic[Context]):
                 return ActionResult(success=True, message=msg, extracted_content=msg)
             except Exception as e:
                 return ActionResult(success=False, error=f"滚动失败: {str(e)}")
+        
+        @self.registry.action(
+            '滚动页面或指定的元素容器。direction为up/down。如果提供了target(编号或选择器)，则滚动该元素内部；否则滚动整个页面。',
+            param_model=ScrollAction
+        )
+        async def scroll(params: ScrollAction):
+            current_page = self.get_current_page()
+            if not current_page:
+                return ActionResult(success=False, error="没有可用页面")
+
+            try:
+                # <<< MODIFIED LOGIC START >>>
+                direction_multiplier = 1 if params.direction == "down" else -1
+                scroll_target_msg = "页面"
+                
+                # 情况1: 如果指定了目标，则滚动元素内部
+                if params.target:
+                    locator = await self._find_locator(current_page, params.target)
+                    if locator:
+                        scroll_target_msg = f"元素 '{params.target}'"
+                        
+                        # 获取元素容器的可见高度 (clientHeight)，而不是整个元素的高度
+                        container_height = await locator.evaluate('el => el.clientHeight')
+                        
+                        # 如果元素不可见或没有高度，给一个合理的默认值 (例如250px) 以免滚动0距离
+                        if container_height == 0:
+                            logger.warning(f"滚动目标 {params.target} 高度为0，使用默认滚动距离。")
+                            container_height = 250
+                        
+                        # 计算滚动距离：基于目标元素自身的高度
+                        dy = int(container_height * params.num_pages * direction_multiplier)
+                        
+                        # 使用JavaScript直接修改元素的scrollTop属性，这是最可靠的内部滚动方式
+                        await locator.evaluate('(element, dy) => { element.scrollTop += dy; }', dy)
+                    else:
+                        return ActionResult(success=False, error=f"找不到滚动目标: {params.target}")
+
+                # 情况2: 否则，滚动整个页面
+                else:
+                    window_height = await current_page.evaluate('() => window.innerHeight')
+                    # 计算滚动距离：基于浏览器窗口的高度
+                    dy = int(window_height * params.num_pages * direction_multiplier)
+                    await current_page.evaluate(f'window.scrollBy(0, {dy})')
+                # <<< MODIFIED LOGIC END >>>
+
+                msg = f"🔍 成功将 {scroll_target_msg} 向{params.direction}滚动了 {params.num_pages} '页'的距离"
+                logger.info(msg)
+                return ActionResult(success=True, message=msg, extracted_content=msg)
+            except Exception as e:
+                return ActionResult(success=False, error=f"滚动失败: {str(e)}")
+                
+    async def _find_locator(self, page: Page, target: str) -> Optional[Locator]:
+        """根据target（编号、xpath或选择器）找到Playwright的Locator"""
+        # 1. 尝试编号
+        if self._is_element_index(target):
+            index = int(target)
+            element_node = self.get_element_by_index(index)
+            if element_node and element_node.xpath:
+                # 使用xpath最可靠
+                return page.locator(f"xpath={element_node.xpath}")
+        
+        # 2. 尝试将target作为选择器
+        try:
+            locator = page.locator(target)
+            if await locator.count() > 0:
+                return locator.first
+        except Exception:
+            pass
+
+        # 3. 尝试文本
+        try:
+            locator = page.get_by_text(target, exact=True)
+            if await locator.count() > 0:
+                return locator.first
+        except Exception:
+            pass
+            
+        return None
     
     async def _try_click_element(self, page: Page, target: str) -> bool:
         """尝试不同方式点击元素"""
@@ -563,51 +699,59 @@ class WebController(Generic[Context]):
         return False
     
     async def _try_select_option(self, page: Page, target: str, option: str) -> bool:
-        """尝试选择下拉框选项"""
-        # 优先检查是否是编号
-        if self._is_element_index(target):
-            index = int(target)
-            element = self.get_element_by_index(index)
-            if element:
-                selectors = self._build_playwright_selector(element)
-                for selector in selectors:
-                    try:
-                        # 尝试原生select
-                        await page.locator(selector).first.select_option(label=option)
-                        logger.debug(f"通过编号 {index} 选择成功，选择器: {selector}")
-                        return True
-                    except:
-                        # 尝试点击下拉框再选择选项 (自定义下拉框)
-                        try:
-                            await page.locator(selector).first.click()
-                            await asyncio.sleep(0.5)
-                            await page.locator(f"text={option}").first.click()
-                            return True
-                        except Exception as e:
-                            logger.debug(f"选择器 {selector} 选择失败: {e}")
-                            continue
-        
-        # 备用策略
-        strategies = [
-            lambda: page.locator(target).first.select_option(label=option),
-            lambda: page.get_by_label(target).select_option(label=option),
-            lambda: self._custom_select_option(page, target, option),
-        ]
-        
-        for strategy in strategies:
-            try:
-                await strategy()
+        """
+        尝试用多种策略选择下拉选项：
+        1. 原生<select>选择。
+        2. 自定义下拉框：点击打开 -> 点击选项。
+        """
+        locator = await self._find_locator(page, target)
+        if not locator:
+            logger.warning(f"选择选项失败：找不到目标元素 '{target}'")
+            return False
+
+        # --- 策略1: 尝试作为原生 <select> 元素处理 ---
+        try:
+            # 使用 `label` 参数，这是最稳健的方式
+            await locator.select_option(label=option, timeout=2000) # 短超时
+            logger.info(f"成功使用原生select方式选择了 '{option}'")
+            return True
+        except Exception:
+            logger.debug(f"原生select方式失败，将尝试自定义下拉框策略。")
+
+        # --- 策略2: 尝试作为自定义下拉框处理 (点击 -> 等待 -> 点击) ---
+        try:
+            # 步骤 A: 点击目标元素以展开选项
+            await locator.click()
+            # 等待一小段时间让UI响应，比如选项列表出现
+            await asyncio.sleep(0.5)
+
+            # 步骤 B: 在整个页面中查找并点击出现的选项
+            # 使用更精确的定位器，比如role="option"或直接按文本
+            # 正则表达式 `^${...}$` 用于全词匹配，防止选中 "Option A" 时误选 "Option ABC"
+            option_text_pattern = f"^{re.escape(option)}$"
+            option_locator = page.get_by_role("option", name=re.compile(option_text_pattern))
+            
+            # 如果按角色找不到，回退到按文本查找
+            if await option_locator.count() == 0:
+                option_locator = page.get_by_text(option_text_pattern, exact=True)
+
+            if await option_locator.count() > 0:
+                await option_locator.first.click()
+                logger.info(f"成功使用自定义下拉框方式点击了选项 '{option}'")
                 return True
-            except:
-                continue
-        return False
+            else:
+                logger.warning(f"点击了 '{target}' 后，未能找到文本为 '{option}' 的可见选项。可能需要滚动。")
+                return False
+        except Exception as e:
+            logger.error(f"自定义下拉框选择策略失败: {e}")
+            return False
     
     async def _custom_select_option(self, page: Page, target: str, option: str):
         """处理自定义下拉框"""
         await page.locator(target).first.click()
         await asyncio.sleep(0.5)
         await page.locator(f"text={option}").first.click()
-    
+
     # 页面管理方法
     def switch_to_page(self, page_index: int) -> bool:
         """手动切换到指定页面"""
@@ -642,21 +786,21 @@ class WebController(Generic[Context]):
         :param target: 对象/目标 (可以是编号、xpath或其他定位器)
         :param content: 内容
         """
-        
         if operation == "click":
             params = ClickAction(target=target)
             return await self.registry.execute_action("click_element", params)
         
         elif operation == "input":
-            if not content:
-                return ActionResult(success=False, error="输入操作需要content参数")
             params = InputAction(target=target, content=content)
             return await self.registry.execute_action("input_text", params)
         
+        # <<< NEW >>>
+        elif operation == "get_dropdown_options":
+            params = GetDropdownOptionsAction(target=target)
+            return await self.registry.execute_action("get_dropdown_options", params)
+            
         elif operation == "select":
-            if not content:
-                return ActionResult(success=False, error="选择操作需要content参数")
-            params = SelectAction(target=target, option=content)
+            params = SelectAction(target=target, option=content) # option在content里
             return await self.registry.execute_action("select_option", params)
         
         elif operation == "navigate":
@@ -664,16 +808,36 @@ class WebController(Generic[Context]):
             return await self.registry.execute_action("navigate", params)
         
         elif operation == "wait":
-            seconds = float(content) if content else 3.0
+            seconds = float(content) if content and content.isdigit() else 3.0
             params = WaitAction(seconds=seconds)
             return await self.registry.execute_action("wait", params)
         
+        # <<< MODIFIED >>>
         elif operation == "scroll":
-            direction = target or "down"
-            distance = int(content) if content else 500
-            params = ScrollAction(direction=direction, distance=distance)
+            # 格式: scroll [target] [direction] [num_pages]
+            # 例如: scroll "" "down 0.5" -> 滚动页面
+            #       scroll "13" "down 2" -> 滚动元素13
+            parts = content.split()
+            direction = "down"
+            num_pages = 1.0
+
+            # 从content中解析方向和页数
+            if len(parts) > 0 and parts[0].lower() in ["up", "down"]:
+                direction = parts.pop(0).lower()
+            
+            if len(parts) > 0:
+                try:
+                    num_pages = float(parts[0])
+                except (ValueError, IndexError):
+                    pass # 如果解析失败，使用默认值
+
+            # 注意：target 是从独立的 target 参数传入的
+            params = ScrollAction(target=target, direction=direction, num_pages=num_pages)
             return await self.registry.execute_action("scroll", params)
-        
+
+        # <<< DELETED >>>
+        # elif operation == "scroll_select": ...
+
         else:
             return ActionResult(success=False, error=f"未知操作: {operation}")
     
@@ -704,6 +868,74 @@ class WebController(Generic[Context]):
             return await self.operate(operation, target, content)
         except Exception as e:
             return ActionResult(success=False, error=f"解析操作字符串失败: {str(e)}")
+    
+    async def scroll_and_select_in_select2(self, select2_target: str, option_text: str, max_scroll_attempts: int = 10) -> ActionResult:
+        """
+        在Select2下拉框中滚动并选择指定选项的便捷方法
+        :param select2_target: Select2下拉框的目标选择器或编号
+        :param option_text: 要选择的选项文本
+        :param max_scroll_attempts: 最大滚动尝试次数
+        """
+        current_page = self.get_current_page()
+        if not current_page:
+            return ActionResult(success=False, error="没有可用页面")
+        
+        try:
+            # 首先尝试直接选择，如果选项已经可见
+            try:
+                option_locator = current_page.locator(f'.select2-results__option:has-text("{option_text}")')
+                if await option_locator.count() > 0:
+                    await option_locator.first.click()
+                    msg = f"🎯 直接选择Select2选项成功: {option_text}"
+                    logger.info(msg)
+                    return ActionResult(success=True, message=msg, extracted_content=msg)
+            except:
+                pass
+            
+            # 如果直接选择失败，开始滚动搜索
+            for attempt in range(max_scroll_attempts):
+                # 滚动3次
+                scroll_result = await self.operate("scroll_select", select2_target, "down 3")
+                if not scroll_result.success:
+                    logger.warning(f"滚动尝试 {attempt + 1} 失败: {scroll_result.error}")
+                    continue
+                
+                await asyncio.sleep(0.3)  # 等待选项渲染
+                
+                # 再次尝试选择选项
+                try:
+                    option_locator = current_page.locator(f'.select2-results__option:has-text("{option_text}")')
+                    if await option_locator.count() > 0:
+                        await option_locator.first.click()
+                        msg = f"🎯 滚动后选择Select2选项成功: {option_text} (滚动{attempt + 1}次)"
+                        logger.info(msg)
+                        return ActionResult(success=True, message=msg, extracted_content=msg)
+                except Exception as e:
+                    logger.debug(f"选择尝试失败: {e}")
+                    continue
+            
+            # 如果向下滚动没找到，尝试向上滚动
+            for attempt in range(max_scroll_attempts // 2):
+                scroll_result = await self.operate("scroll_select", select2_target, "up 5")
+                if not scroll_result.success:
+                    continue
+                
+                await asyncio.sleep(0.3)
+                
+                try:
+                    option_locator = current_page.locator(f'.select2-results__option:has-text("{option_text}")')
+                    if await option_locator.count() > 0:
+                        await option_locator.first.click()
+                        msg = f"🎯 向上滚动后选择Select2选项成功: {option_text}"
+                        logger.info(msg)
+                        return ActionResult(success=True, message=msg, extracted_content=msg)
+                except:
+                    continue
+            
+            return ActionResult(success=False, error=f"经过多次滚动尝试，未能找到选项: {option_text}")
+            
+        except Exception as e:
+            return ActionResult(success=False, error=f"Select2滚动选择失败: {str(e)}")
 
 
 # 使用示例
@@ -731,9 +963,12 @@ async def example_usage():
         
         # 执行操作 - 这些操作会自动跟踪页面变化
         operations = [
-            "[操作：click，对象：登录链接，内容：]",      # 可能会导航到新页面
-            "[操作：input，对象：8，内容：用户名]",      # 在新页面输入
-            "[操作：click，对象：提交按钮，内容：]",      # 可能再次导航
+            "[操作：click，对象：登录链接，内容：]",                    # 可能会导航到新页面
+            "[操作：input，对象：8，内容：用户名]",                    # 在新页面输入
+            "[操作：click，对象：.select2-selection，内容：]",        # 打开Select2下拉框
+            "[操作：scroll_select，对象：.select2-results__options，内容：down 5]", # 滚动Select2选项向下5次
+            "[操作：select，对象：10，内容：2010]",                   # 选择年份2010
+            "[操作：click，对象：提交按钮，内容：]",                   # 可能再次导航
         ]
         
         for op in operations:

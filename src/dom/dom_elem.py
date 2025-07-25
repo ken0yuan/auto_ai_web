@@ -164,10 +164,10 @@ async def extract_dom_tree(page, js_path: str) -> Tuple[DOMElementNode, dict]:
     js_code = Path(js_path).read_text(encoding="utf-8")
 
     args = {
-        "doHighlightElements": False,
+        "doHighlightElements": True,
         "focusHighlightIndex": -1,
         "viewportExpansion": 0,
-        "debugMode": False
+        "debugMode": True
     }
 
     logger.debug(f"🔧 Running JavaScript DOM analysis for {await page.title()} ({page.url})...")

@@ -3,3 +3,4 @@ requests==2.32.4
 json
 qasync
 PyQt5
+pydantic
