@@ -9,8 +9,43 @@ import base64
 import json
 import time
 from pathlib import Path
-
+import re
+from typing import Dict, Any, List, Tuple
 # ---- 示例：你可以把这里换成实际生成的 JSON ----
+
+def parse_agent_output(response: str) -> Tuple[str, str, List[str]]:
+    """
+    从模型返回中解析出 thinking、task 和 operations 字符串格式
+    支持 response 为带 markdown ```json 的字符串
+    返回: (thinking, task, operations_list)
+    """
+    # 1. 去除 markdown 的 ```json 包裹
+    json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
+    if json_match:
+        response = json_match.group(1).strip()
+    else:
+        # 如果不是 markdown 格式，也允许直接是 JSON 字符串
+        response = response.strip()
+
+    # 2. 尝试解析 JSON
+    try:
+        data = json.loads(response)
+    except json.JSONDecodeError as e:
+        print("❌ JSON 解析失败:", e)
+        print("原始 response:", response[:300])
+        return "", "", []
+
+    # 3. 提取字段
+    thinking = data.get("thinking", "")
+    task = data.get("task", "")
+    
+    operations = []
+    for op in data.get("operations", []):
+        operations.append(
+            f"[操作：{op.get('action', '')}，对象：{op.get('target', '')}，内容：{op.get('content', '')}]"
+        )
+
+    return thinking, task, operations
 
 def extract_operations(response: str):
     """

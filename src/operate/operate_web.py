@@ -204,44 +204,38 @@ class WebController(Generic[Context]):
         return self.context.pages[self.current_page_index]
     
     async def _detect_and_switch_page(self, old_page_count: int, old_url: str) -> tuple[bool, str]:
-        """
-        检测页面变化并自动切换
-        返回: (是否发生变化, 新页面URL)
-        """
         if not self.context:
             return False, ""
-        
+
+        # 等待新页面最多 2 秒
+        for _ in range(10):
+            new_page_count = len(self.context.pages)
+            if new_page_count > old_page_count:
+                break
+            await asyncio.sleep(0.2)
+
         new_page_count = len(self.context.pages)
-        
-        # 情况1: 有新页面打开
         if new_page_count > old_page_count:
-            # 切换到最新页面
+            new_page = self.context.pages[-1]
+            try:
+                await current_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                await current_page.wait_for_load_state("networkidle", timeout=3000)
+            except:
+                pass
             self.current_page_index = new_page_count - 1
-            new_page = self.get_current_page()
-            if new_page:
-                try:
-                    await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
-                    logger.info(f"🔗 检测到新页面，自动切换到页面 {self.current_page_index}: {new_page.url}")
-                    return True, new_page.url
-                except:
-                    logger.warning("新页面加载超时")
-                    return True, new_page.url
-        
-        # 情况2: 当前页面发生导航
+            return True, new_page.url
+
+        # 情况2：URL变了
         current_page = self.get_current_page()
         if current_page:
             try:
-                # 等待页面加载完成
-                await current_page.wait_for_load_state("domcontentloaded", timeout=3000)
+                await current_page.wait_for_load_state("domcontentloaded", timeout=5000)
                 current_url = current_page.url
-                
                 if current_url != old_url:
-                    logger.info(f"🔗 页面导航: {old_url} -> {current_url}")
                     return True, current_url
             except:
-                # 超时或其他错误，可能页面没有导航
                 pass
-        
+
         return False, old_url
     
     def update_dom_elements(self, elements: List[DOMElementNode]):

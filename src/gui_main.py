@@ -23,8 +23,8 @@ from llm import generate_opera, ui_analyzer
 from operate.operate_web import WebController, extract_json_from_response
 from dom.dom_elem import get_related_elements
 from prompt.prompt_generate import get_updated_state, format_browser_state_prompt
-from Prompts import ui_analyzer_expert
-from main import extract_operations  # 只用到这个，call_with_retry换成异步版
+from Prompts import ui_analyzer_expert, task_analyzer, pic_analyzer
+from main import extract_operations, parse_agent_output  # 只用到这个，call_with_retry换成异步版
 from playwright.async_api import Browser, BrowserContext, Page
 
 ENHANCED_PAGE_INIT_SCRIPT = """
@@ -219,7 +219,7 @@ class MainWindow(QWidget):
             return
 
         self.start_button.setEnabled(False)
-        self.add_chat_card("🚀 开始执行任务...", "")
+        # self.add_chat_card("🚀 开始执行任务...", "")
         try:
             await self.run_main_logic(url, task)
         except Exception as e:
@@ -240,9 +240,17 @@ class MainWindow(QWidget):
             # ✅ 只创建一次 WebController
             controller = WebController()
             controller.set_context(context)
+            old_url=input_website
+            old_page_count = 1  # 初始页面数量
             num = 0  # 用于标记每次操作的截图文件名
             while True:
                 # ✅ 获取当前活跃页面
+                switch_page = False
+                switch_page, url = await controller._detect_and_switch_page(old_page_count, old_url)
+                if switch_page:
+                    old_page_count = len(context.pages)
+                    old_url = url
+                    self.add_chat_card(f"🔄 页面切换到: {url}", "")
                 current_page = controller.get_current_page()
                 if not current_page:
                     self.add_chat_card("❌ 没有可用页面", "")
@@ -265,17 +273,18 @@ class MainWindow(QWidget):
                     # 继续执行，不中断流程
                 
                 # ✅ 基于当前活跃页面截图和获取状态
+                JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
+                state = await get_updated_state(current_page, JS_PATH)
                 screenshot = await current_page.screenshot(path=f"screenshot_{controller.current_page_index}_{num}.png")
                 num += 1
                 screenshot_base64 = base64.b64encode(screenshot).decode('utf-8')
-                JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
-                state = await get_updated_state(current_page, JS_PATH)
+
                 #print("1111111\n")
 
                 # ✅ 异步调用大模型
                 response = await async_call_with_retry(
                     ui_analyzer, 3, 2,
-                    input_task, screenshot_base64, ui_analyzer_expert, chat_history
+                    input_task, screenshot_base64, pic_analyzer, chat_history
                 )
                 #print("2222222\n")
                 if response.startswith("函数") or response.startswith("API错误") or response.startswith("调用API失败"):
@@ -283,47 +292,29 @@ class MainWindow(QWidget):
                     truncated_response = response[:500] + "...[响应太长已截断]" if len(response) > 500 else response
                     self.add_chat_card("❌ UI 分析器调用失败", truncated_response)
                     break
-
-                thought, task, place = extract_json_from_response(response)
+                print(f"🔍 UI 分析器响应: {response[:500]}...")  # 只打印前500字避免太长
+                thought, task, operations = parse_agent_output(response)
                 elements = get_related_elements(state.element_tree)
-                print(task)
-                prompt = format_browser_state_prompt(state, place)
                 controller.update_dom_elements(elements)
-
-                ans = await async_call_with_retry(
-                    generate_opera, 3, 2,
-                    task, prompt, screenshot_base64
-                )
-                if ans.startswith("函数") or ans.startswith("API错误") or ans.startswith("调用API失败"):
-                    # 截断可能包含图片编码的长响应
-                    truncated_ans = ans[:500] + "...[响应太长已截断]" if len(ans) > 500 else ans
-                    self.add_chat_card("❌ 操作生成器调用失败", truncated_ans)
-                    break
-                print(f"操作生成器返回：{ans}")
-                task, operations = extract_operations(ans)
                 #operations += ["[操作：scroll，对象：，内容：200]"]  # 每次结束滚动
                 result_logs = []
                 if operations:
                     for op in operations:
                         result = await controller.execute_from_string(op)
                         result_logs.append(f"{op}: {result.success} - {result.message}")
-                        
+                        #chat_history.append({"role": "user", "content": task})
+                        chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message}"})
+                        #result_logs.append(f"历史任务: {chat_history[-1]}")
                         # ✅ 如果是滚动操作，等待更长时间让页面稳定
                         if "scroll" in op.lower():
                             print("🔄 滚动操作完成，等待页面稳定...")
                             await asyncio.sleep(2)  # 额外等待时间
-                        
-                        if result.page_changed:
-                            new_page_info = f"🔄 页面已切换到: {result.new_page_url}"
-                            result_logs.append(new_page_info)
-                            print(new_page_info)
                 else:
                     result_logs.append("没有提取到有效的操作列表")
                     break
 
                 self.add_chat_card(thought, "\n".join(result_logs))
-                chat_history.append({"role": "user", "content": task})
-                chat_history.append({"role": "assistant", "content": ans})
+
 
             await context.close()
             await browser.close()
