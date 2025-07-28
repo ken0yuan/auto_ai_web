@@ -260,7 +260,7 @@ class MainWindow(QWidget):
                 page_info = f"当前页面: {current_page.url} (页面 {controller.current_page_index + 1}/{len(context.pages)})"
                 print(f"📄 {page_info}")
                 
-                try:
+                '''try:
                     # ✅ 等待页面完全加载
                     await current_page.wait_for_load_state("domcontentloaded", timeout=5000)
                     await current_page.wait_for_load_state("networkidle", timeout=3000)
@@ -270,7 +270,7 @@ class MainWindow(QWidget):
                     
                 except Exception as e:
                     print(f"⚠️ 页面加载等待超时: {e}")
-                    # 继续执行，不中断流程
+                    # 继续执行，不中断流程'''
                 
                 # ✅ 基于当前活跃页面截图和获取状态
                 JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
@@ -304,11 +304,9 @@ class MainWindow(QWidget):
                         result_logs.append(f"{op}: {result.success} - {result.message}")
                         #chat_history.append({"role": "user", "content": task})
                         chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message}"})
+                        result_logs.append(f"操作的任务: {task}")
                         #result_logs.append(f"历史任务: {chat_history[-1]}")
                         # ✅ 如果是滚动操作，等待更长时间让页面稳定
-                        if "scroll" in op.lower():
-                            print("🔄 滚动操作完成，等待页面稳定...")
-                            await asyncio.sleep(2)  # 额外等待时间
                 else:
                     result_logs.append("没有提取到有效的操作列表")
                     break

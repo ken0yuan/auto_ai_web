@@ -185,7 +185,14 @@ class WebController(Generic[Context]):
         
         # 注册所有默认操作
         self._register_default_actions()
-    
+
+    def _ensure_target_exists(self, target: str) -> bool:
+        """检查目标是否存在于 dom_elements 或 xpath_to_element 映射中"""
+        if self._is_element_index(target):
+            return int(target) in self.dom_elements
+        else:
+            return target in self.xpath_to_element
+
     def set_context(self, context: BrowserContext):
         """设置浏览器上下文"""
         self.context = context
@@ -207,19 +214,19 @@ class WebController(Generic[Context]):
         if not self.context:
             return False, ""
 
-        # 等待新页面最多 2 秒
+        # 等待新页面最多 10 秒
         for _ in range(10):
             new_page_count = len(self.context.pages)
             if new_page_count > old_page_count:
                 break
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(1)
 
         new_page_count = len(self.context.pages)
         if new_page_count > old_page_count:
             new_page = self.context.pages[-1]
             try:
-                await current_page.wait_for_load_state("domcontentloaded", timeout=5000)
-                await current_page.wait_for_load_state("networkidle", timeout=3000)
+                await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                await new_page.wait_for_load_state("networkidle", timeout=5000)
             except:
                 pass
             self.current_page_index = new_page_count - 1
@@ -230,6 +237,7 @@ class WebController(Generic[Context]):
         if current_page:
             try:
                 await current_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                await current_page.wait_for_load_state("networkidle", timeout=5000)
                 current_url = current_page.url
                 if current_url != old_url:
                     return True, current_url
@@ -780,6 +788,11 @@ class WebController(Generic[Context]):
         :param target: 对象/目标 (可以是编号、xpath或其他定位器)
         :param content: 内容
         """
+        if operation in ["click", "input", "select", "get_dropdown_options", "scroll"] and target:
+        # 如果提供了目标，强制要求它存在
+            if not self._ensure_target_exists(target):
+                return ActionResult(success=False, error=f"未找到目标对象: {target}")
+
         if operation == "click":
             params = ClickAction(target=target)
             return await self.registry.execute_action("click_element", params)
