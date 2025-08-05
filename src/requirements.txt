@@ -1,6 +1,6 @@
 playwright==1.53.0
 requests==2.32.4
-json
 qasync
 PyQt5
 pydantic
+flask

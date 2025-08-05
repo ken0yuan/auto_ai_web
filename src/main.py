@@ -3,7 +3,7 @@ from llm import generate_opera, ui_analyzer
 from operate.operate_web import WebController, extract_json_from_response
 from dom.dom_elem import extract_dom_tree, get_related_elements, DOMElementNode, DOMTextNode
 from prompt.prompt_generate import get_updated_state,format_browser_state_prompt
-from Prompts import ui_analyzer_expert
+from Prompts import pic_analyzer
 import asyncio
 import base64
 import json
@@ -12,6 +12,50 @@ from pathlib import Path
 import re
 from typing import Dict, Any, List, Tuple
 # ---- 示例：你可以把这里换成实际生成的 JSON ----
+
+ENHANCED_PAGE_INIT_SCRIPT = """
+(() => {
+    // 确保脚本只被初始化一次
+    if (window._eventListenerTrackerInitialized) return;
+    window._eventListenerTrackerInitialized = true;
+
+    // 原始的 addEventListener 函数
+    const originalAddEventListener = EventTarget.prototype.addEventListener;
+    // 使用 WeakMap 来存储每个元素的事件监听器，避免内存泄漏
+    const eventListenersMap = new WeakMap();
+
+    // 重写 addEventListener
+    EventTarget.prototype.addEventListener = function(type, listener, options) {
+        if (typeof listener === "function") {
+            let listeners = eventListenersMap.get(this);
+            if (!listeners) {
+                listeners = [];
+                eventListenersMap.set(this, listeners);
+            }
+            listeners.push({
+                type,
+                listener,
+                // 只记录函数的前100个字符作为预览，避免存储过多信息
+                listenerPreview: listener.toString().slice(0, 100),
+                options
+            });
+        }
+        // 调用原始的 addEventListener，保持原有功能
+        return originalAddEventListener.call(this, type, listener, options);
+    };
+
+    // 定义一个新的全局函数，用于获取元素的监听器
+    window.getEventListenersForNode = (node) => {
+        const listeners = eventListenersMap.get(node) || [];
+        // 返回一个简化的监听器信息列表，对外部调用者友好
+        return listeners.map(({ type, listenerPreview, options }) => ({
+            type,
+            listenerPreview,
+            options
+        }));
+    };
+})();
+"""
 
 def parse_agent_output(response: str) -> Tuple[str, str, List[str]]:
     """
@@ -121,149 +165,115 @@ def extract_operations(response: str):
         print(f"原始响应: {response[:200]}...")  # 打印前200字符用于调试
         return "", []
 
-def call_with_retry(func, max_retries=3, delay=2, *args, **kwargs):
-    """
-    带重试机制的函数调用
-    :param func: 要调用的函数
-    :param max_retries: 最大重试次数
-    :param delay: 重试间隔时间（秒）
-    :param args: 函数参数
-    :param kwargs: 函数关键字参数
-    :return: 函数执行结果
-    """
+
+
+# ✅ 改造：异步的 call_with_retry（避免阻塞）
+async def async_call_with_retry(func, max_retries=3, delay=2, *args, **kwargs):
     last_error = None
-    
     for attempt in range(max_retries + 1):
         try:
             print(f"尝试调用 {func.__name__} (第 {attempt + 1} 次)")
-            result = func(*args, **kwargs)
-            
-            # 检查结果是否有效
+            # ✅ 在线程池里运行阻塞型函数
+            result = await asyncio.to_thread(func, *args, **kwargs)
+
             if result and not result.startswith("API错误") and not result.startswith("调用API失败"):
                 print(f"✅ {func.__name__} 调用成功")
                 return result
             else:
                 print(f"❌ {func.__name__} 返回错误结果: {result[:100]}...")
                 if attempt < max_retries:
-                    print(f"⏳ 等待 {delay} 秒后重试...")
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                 continue
-                
         except Exception as e:
             last_error = e
             print(f"❌ {func.__name__} 调用异常: {str(e)}")
             if attempt < max_retries:
-                print(f"⏳ 等待 {delay} 秒后重试...")
-                time.sleep(delay)
+                await asyncio.sleep(delay)
             else:
                 print(f"💥 {func.__name__} 重试 {max_retries} 次后仍然失败")
-    
-    # 所有重试都失败，返回错误信息
-    error_msg = f"函数 {func.__name__} 经过 {max_retries + 1} 次尝试后失败"
-    if last_error:
-        error_msg += f"，最后错误: {str(last_error)}"
-    return error_msg
 
-async def main():
-    input_website = input("请输入要访问的网站网址：")
-    input_task = input("请输入任务描述：")
+    return f"函数 {func.__name__} 经过 {max_retries + 1} 次尝试后失败，最后错误: {str(last_error)}" if last_error else "调用失败"
+
+# 参考 gui_main.py 的 run_main_logic 进行异步多轮任务处理，支持多页面、截图、UI分析、操作执行、历史追踪
+async def process_task(url: str, task: str):
+    input_website = url
+    input_task = task
     chat_history = []
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            args=["--start-maximized"]
+        browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
+        context = await browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            device_scale_factor=1.0,
+            color_scheme="dark"
         )
-        context = await browser.new_context(no_viewport=True)  # ✅ 禁用固定 viewport
+        await context.add_init_script(ENHANCED_PAGE_INIT_SCRIPT)
+        # 可选：注入 ENHANCED_PAGE_INIT_SCRIPT（如需事件监听器追踪，可参考 gui_main.py）
+        # await context.add_init_script(ENHANCED_PAGE_INIT_SCRIPT)
         page = await context.new_page()
         await page.goto(input_website)
-        # 
-        # 实例化操作类
+        controller = WebController()
+        controller.set_context(context)
+        old_url = input_website
+        old_page_count = 1
+        num = 0  # 截图编号
         while True:
-            controller = WebController()
-            controller.set_context(context)
-            screenshot = await page.screenshot()
+            # 检查是否有新页面切换
+            switch_page = False
+            if hasattr(controller, '_detect_and_switch_page'):
+                switch_page, url = await controller._detect_and_switch_page(old_page_count, old_url)
+                if switch_page:
+                    old_page_count = len(context.pages)
+                    old_url = url
+                    print(f"🔄 页面切换到: {url}")
+            current_page = controller.get_current_page() if hasattr(controller, 'get_current_page') else page
+            if not current_page:
+                print("❌ 没有可用页面")
+                break
+            page_info = f"当前页面: {current_page.url} (页面 {getattr(controller, 'current_page_index', 0) + 1}/{len(context.pages)})"
+            print(f"📄 {page_info}")
+
+            # 页面状态与截图
+            JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
+            state = await get_updated_state(current_page, JS_PATH)
+            screenshot = await current_page.screenshot(path=f"screenshot_{getattr(controller, 'current_page_index', 0)}_{num}.png")
+            num += 1
             screenshot_base64 = base64.b64encode(screenshot).decode('utf-8')
 
-            JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
-            state = await get_updated_state(page, JS_PATH)
-            #print(context)
-            
-            # 第一个大模型调用：UI分析器（带重试）
-            print("\n=== 调用 UI 分析器 ===")
-            response = call_with_retry(
-                ui_analyzer,
-                3,  # max_retries
-                2,  # delay
-                input_task,
-                screenshot_base64,
-                ui_analyzer_expert,
-                chat_history,
+            # 异步调用大模型（UI分析器）
+            # 这里直接用 call_with_retry，若需完全异步可仿照 gui_main.py 的 async_call_with_retry
+            response = await async_call_with_retry(
+                ui_analyzer, 3, 2,
+                input_task, screenshot_base64, pic_analyzer, chat_history
             )
-            
-            # 检查UI分析器调用是否成功
             if response.startswith("函数") or response.startswith("API错误") or response.startswith("调用API失败"):
-                #print(f"UI分析器调用失败: {response}")
-                print("跳过本次循环...")
-                continue
-                
-            #print(f"\nUI分析器返回：{response}")
-            thought, task, place = extract_json_from_response(response)
+                truncated_response = response[:500] + "...[响应太长已截断]" if len(response) > 500 else response
+                print("❌ UI 分析器调用失败", truncated_response)
+                break
+            print(f"🔍 UI 分析器响应: {response[:500]}...")
+            thought, task, operations = parse_agent_output(response)
             elements = get_related_elements(state.element_tree)
-            prompt = format_browser_state_prompt(state, place)
             controller.update_dom_elements(elements)
-            print(prompt)
-            
-            # 第二个大模型调用：操作生成器（带重试）
-            print("\n=== 调用操作生成器 ===")
-            ans = call_with_retry(
-                generate_opera,
-                3,  # max_retries
-                2,  # delay
-                task,
-                prompt,
-                screenshot_base64,
-            )
-            
-            # 检查操作生成器调用是否成功
-            if ans.startswith("函数") or ans.startswith("API错误") or ans.startswith("调用API失败"):
-                print(f"操作生成器调用失败: {ans}")
-                print("跳过本次循环...")
-                continue
-            print(f"\n操作生成器返回：{ans}")
-            task_description, operations = extract_operations(ans)
-            
-            print(f"任务描述: {task_description}")
-            print(f"操作列表: {operations}")
-            
-            # 执行操作
+            result_logs = []
+            done = False
             if operations:
                 for op in operations:
                     result = await controller.execute_from_string(op)
-                    print(f"执行 {op}: {result.success} - {result.message}")
+                    result_logs.append(f"{op}: {result.success} - {result.message}")
+                    chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message} - {result.error}"})
+                    result_logs.append(f"操作的任务: {task}")
+                    if result.is_done:
+                        done = True
             else:
-                print("没有提取到有效的操作列表")
-                
-            chat_history.append({"role": "user", "content": task})
-            chat_history.append({"role": "assistant", "content": ans})
-            # 使用提取的任务描述来更新input_task
-            if task_description:
-                input_task = f"请继续执行任务，直到完成。上一步任务：{task_description}\n请继续执行任务，直到完成。"
-            else:
-                input_task = ("请继续执行任务，直到完成。当前任务描述：" + task + "\n请继续执行任务，直到完成。")
+                result_logs.append("没有提取到有效的操作列表")
+                break
+            print("\n".join(result_logs))
+            if done:
+                break
 
-            # 依次执行操作
-            print("\n开始执行操作：")
-            '''if operator.operate(response):
-                print("[成功] 执行操作")
-                page = operator.page
-                chat_history.append({"role": "user", "content": input_task})
-                chat_history.append({"role": "assistant", "content": ans})
-                input_task = ("请继续执行任务，直到完成。当前任务描述：" + ans + "\n请继续执行任务，直到完成。")
-            else:
-                print("[跳过] 无法执行操作或操作失败")'''
-
-        context.close()
-        browser.close()
+        await context.close()
+        await browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    url=input("请输入要访问的网站网址：")
+    task=input("请输入任务描述：")
+    asyncio.run(process_task(url, task))

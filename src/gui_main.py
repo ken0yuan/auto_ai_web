@@ -24,81 +24,8 @@ from operate.operate_web import WebController, extract_json_from_response
 from dom.dom_elem import get_related_elements
 from prompt.prompt_generate import get_updated_state, format_browser_state_prompt
 from Prompts import ui_analyzer_expert, task_analyzer, pic_analyzer
-from main import extract_operations, parse_agent_output  # 只用到这个，call_with_retry换成异步版
+from main import extract_operations, parse_agent_output, async_call_with_retry, ENHANCED_PAGE_INIT_SCRIPT 
 from playwright.async_api import Browser, BrowserContext, Page
-
-ENHANCED_PAGE_INIT_SCRIPT = """
-(() => {
-    // 确保脚本只被初始化一次
-    if (window._eventListenerTrackerInitialized) return;
-    window._eventListenerTrackerInitialized = true;
-
-    // 原始的 addEventListener 函数
-    const originalAddEventListener = EventTarget.prototype.addEventListener;
-    // 使用 WeakMap 来存储每个元素的事件监听器，避免内存泄漏
-    const eventListenersMap = new WeakMap();
-
-    // 重写 addEventListener
-    EventTarget.prototype.addEventListener = function(type, listener, options) {
-        if (typeof listener === "function") {
-            let listeners = eventListenersMap.get(this);
-            if (!listeners) {
-                listeners = [];
-                eventListenersMap.set(this, listeners);
-            }
-            listeners.push({
-                type,
-                listener,
-                // 只记录函数的前100个字符作为预览，避免存储过多信息
-                listenerPreview: listener.toString().slice(0, 100),
-                options
-            });
-        }
-        // 调用原始的 addEventListener，保持原有功能
-        return originalAddEventListener.call(this, type, listener, options);
-    };
-
-    // 定义一个新的全局函数，用于获取元素的监听器
-    window.getEventListenersForNode = (node) => {
-        const listeners = eventListenersMap.get(node) || [];
-        // 返回一个简化的监听器信息列表，对外部调用者友好
-        return listeners.map(({ type, listenerPreview, options }) => ({
-            type,
-            listenerPreview,
-            options
-        }));
-    };
-})();
-"""
-
-
-# ✅ 改造：异步的 call_with_retry（避免阻塞）
-async def async_call_with_retry(func, max_retries=3, delay=2, *args, **kwargs):
-    last_error = None
-    for attempt in range(max_retries + 1):
-        try:
-            print(f"尝试调用 {func.__name__} (第 {attempt + 1} 次)")
-            # ✅ 在线程池里运行阻塞型函数
-            result = await asyncio.to_thread(func, *args, **kwargs)
-
-            if result and not result.startswith("API错误") and not result.startswith("调用API失败"):
-                print(f"✅ {func.__name__} 调用成功")
-                return result
-            else:
-                print(f"❌ {func.__name__} 返回错误结果: {result[:100]}...")
-                if attempt < max_retries:
-                    await asyncio.sleep(delay)
-                continue
-        except Exception as e:
-            last_error = e
-            print(f"❌ {func.__name__} 调用异常: {str(e)}")
-            if attempt < max_retries:
-                await asyncio.sleep(delay)
-            else:
-                print(f"💥 {func.__name__} 重试 {max_retries} 次后仍然失败")
-
-    return f"函数 {func.__name__} 经过 {max_retries + 1} 次尝试后失败，最后错误: {str(last_error)}" if last_error else "调用失败"
-
 
 class ChatCard(QFrame):
     """每一轮思考的卡片"""
@@ -231,8 +158,12 @@ class MainWindow(QWidget):
     async def run_main_logic(self, input_website, input_task):
         chat_history = []
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False,args=["--start-maximized"])
-            context = await browser.new_context(no_viewport=True,color_scheme="dark")  # ✅ 禁用固定 viewport，使用暗色主题
+            browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
+            context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                device_scale_factor=1.0,
+                color_scheme="dark"
+            )
             await context.add_init_script(ENHANCED_PAGE_INIT_SCRIPT)
             # ✅ 直接使用输入的网址
             page = await context.new_page()
@@ -298,20 +229,25 @@ class MainWindow(QWidget):
                 controller.update_dom_elements(elements)
                 #operations += ["[操作：scroll，对象：，内容：200]"]  # 每次结束滚动
                 result_logs = []
+                done = False  # 用于标记任务是否完成
                 if operations:
                     for op in operations:
                         result = await controller.execute_from_string(op)
                         result_logs.append(f"{op}: {result.success} - {result.message}")
                         #chat_history.append({"role": "user", "content": task})
-                        chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message}"})
+                        chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message} - {result.error}"})
                         result_logs.append(f"操作的任务: {task}")
                         #result_logs.append(f"历史任务: {chat_history[-1]}")
                         # ✅ 如果是滚动操作，等待更长时间让页面稳定
+                        if result.is_done:
+                            done = True
                 else:
                     result_logs.append("没有提取到有效的操作列表")
                     break
 
                 self.add_chat_card(thought, "\n".join(result_logs))
+                if done:
+                    break
 
 
             await context.close()

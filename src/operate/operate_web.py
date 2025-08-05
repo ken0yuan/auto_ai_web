@@ -788,6 +788,9 @@ class WebController(Generic[Context]):
         :param target: 对象/目标 (可以是编号、xpath或其他定位器)
         :param content: 内容
         """
+        if operation == "done":
+            return ActionResult(success=True, message="操作完成", is_done=True)
+        
         if operation in ["click", "input", "select", "get_dropdown_options", "scroll"] and target:
         # 如果提供了目标，强制要求它存在
             if not self._ensure_target_exists(target):
