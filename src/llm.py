@@ -1,6 +1,6 @@
 import json
 import requests
-from config import DEEPSEEK_MODEL, OPENROUTER_API_KEY, OPENROUTER_API_URL, QWEN_MODEL
+from config import OPENROUTER_API_KEY, OPENROUTER_API_URL, QWEN_MODEL, OPENAI_MODEL
 
 def generate_opera(
     task: str,
@@ -61,9 +61,10 @@ def generate_opera(
         return f"调用API失败: {str(e)}"
 
 
-def ui_analyzer(
+def pic_analyzer(
         prompt: str,
         image_base64: list = None,
+        message: str = None,
         system_message: str = None,
         history: list = None,
         max_tokens: int = 2048
@@ -83,7 +84,7 @@ def ui_analyzer(
                 history_text += f"\n- 已完成操作：{h['content']}"
     
     if system_message:
-        system_message = system_message.replace("{history_text}", history_text).replace("{user_task}", prompt)
+        system_message = system_message.replace("{history_text}", history_text).replace("{user_task}", prompt).replace("{message}", message)
 
     messages = []
     if system_message:
@@ -103,6 +104,61 @@ def ui_analyzer(
 
     #print(messages)
 
+    payload = {
+        "model": QWEN_MODEL,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7,
+        "top_p": 0.9
+    }
+
+    try:
+        response = requests.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            data=json.dumps(payload),
+            timeout=30
+        )
+
+        print("Status Code:", response.status_code)
+        # print("Response Text:", response.text[:500])  # 只打印前500字避免太长
+
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                return result['choices'][0]['message']['content'].strip()
+            except json.JSONDecodeError:
+                return "返回的内容不是合法的 JSON。"
+        else:
+            return f"API错误: {response.status_code} - {response.text}"
+
+    except Exception as e:
+        return f"调用API失败: {str(e)}"
+
+def ui_analyzer(
+    image_base64: list = None,
+    image_base64_highlight: list = None,
+    system_message: str = None,
+    max_tokens: int = 2048
+) -> str:
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    messages = []
+    if system_message:
+        messages.append({"role": "system", "content": system_message})
+
+    # ✅ 再加入当前 user prompt
+    if image_base64:
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64_highlight}"}}
+            ]
+        })
     payload = {
         "model": QWEN_MODEL,
         "messages": messages,

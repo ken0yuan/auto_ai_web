@@ -1,9 +1,9 @@
 from playwright.async_api import async_playwright
-from llm import generate_opera, ui_analyzer
+from llm import generate_opera, pic_analyzer
 from operate.operate_web import WebController, extract_json_from_response
 from dom.dom_elem import extract_dom_tree, get_related_elements, DOMElementNode, DOMTextNode
 from prompt.prompt_generate import get_updated_state,format_browser_state_prompt
-from Prompts import pic_analyzer
+from Prompts import pic_analyzer_expert
 import asyncio
 import base64
 import json
@@ -202,7 +202,7 @@ async def process_task(url: str, task: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1440, "height": 900},  # 设置合适的视口大小
             device_scale_factor=1.0,
             color_scheme="dark"
         )
@@ -242,8 +242,8 @@ async def process_task(url: str, task: str):
             # 异步调用大模型（UI分析器）
             # 这里直接用 call_with_retry，若需完全异步可仿照 gui_main.py 的 async_call_with_retry
             response = await async_call_with_retry(
-                ui_analyzer, 3, 2,
-                input_task, screenshot_base64, pic_analyzer, chat_history
+                pic_analyzer, 3, 2,
+                input_task, screenshot_base64, pic_analyzer_expert, chat_history
             )
             if response.startswith("函数") or response.startswith("API错误") or response.startswith("调用API失败"):
                 truncated_response = response[:500] + "...[响应太长已截断]" if len(response) > 500 else response

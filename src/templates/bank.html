@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>银行投资管理系统</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        :root {
+            --primary: #0a2a66;
+            --secondary: #c6a961;
+            --light: #f5f7fa;
+            --dark: #333;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --info: #17a2b8;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f0f4f8 0%, #e6eef7 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: linear-gradient(to right, var(--primary), #0a3366);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px 10px 0 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo i {
+            font-size: 2.5rem;
+            color: var(--secondary);
+        }
+        
+        .logo h1 {
+            font-weight: 600;
+            font-size: 1.8rem;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 45px;
+            height: 45px;
+            background: var(--secondary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        
+        .main-content {
+            display: flex;
+            gap: 25px;
+            margin-top: 25px;
+        }
+        
+        .sidebar {
+            flex: 0 0 250px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 25px 0;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            padding: 15px 30px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar li:hover, .sidebar li.active {
+            background: rgba(10, 42, 102, 0.08);
+            border-left: 4px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .sidebar li i {
+            width: 25px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+        
+        .content {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 30px;
+            min-height: 500px;
+        }
+        
+        .page-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .page-title h2 {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 1.6rem;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #08306b;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #b89b50;
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #bd2130;
+            transform: translateY(-2px);
+        }
+        
+        .form-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border 0.3s ease;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(10, 42, 102, 0.1);
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .form-col {
+            flex: 1;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .card-title {
+            color: var(--primary);
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 1.3rem;
+        }
+        
+        .investment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .investment-card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .investment-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+            border-color: var(--primary);
+        }
+        
+        .investment-card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .investment-card p {
+            margin: 8px 0;
+            color: #555;
+        }
+        
+        .investment-card .rate {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--secondary);
+            margin: 10px 0;
+        }
+        
+        .investment-card .term {
+            background: rgba(198, 169, 97, 0.1);
+            color: var(--secondary);
+            padding: 5px 10px;
+            border-radius: 20px;
+            display: inline-block;
+            font-size: 0.9rem;
+        }
+        
+        .completion-page {
+            text-align: center;
+            padding: 50px 20px;
+        }
+        
+        .success-icon {
+            width: 100px;
+            height: 100px;
+            background: rgba(40, 167, 69, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+        }
+        
+        .success-icon i {
+            font-size: 4rem;
+            color: var(--success);
+        }
+        
+        .completion-page h2 {
+            color: var(--success);
+            font-size: 2.2rem;
+            margin-bottom: 15px;
+        }
+        
+        .completion-page p {
+            font-size: 1.1rem;
+            color: #555;
+            max-width: 600px;
+            margin: 0 auto 30px;
+            line-height: 1.6;
+        }
+        
+        .summary-card {
+            background: rgba(10, 42, 102, 0.03);
+            border: 1px solid rgba(10, 42, 102, 0.1);
+            border-radius: 8px;
+            padding: 25px;
+            max-width: 600px;
+            margin: 40px auto;
+            text-align: left;
+        }
+        
+        .summary-card h3 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(10, 42, 102, 0.1);
+        }
+        
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        
+        .summary-item .label {
+            color: #666;
+        }
+        
+        .summary-item .value {
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        .summary-item .amount {
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 1.1rem;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .date-row {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .date-group {
+            flex: 1;
+        }
+        
+        .date-control {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        
+        .form-section {
+            margin-bottom: 35px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .form-section-title {
+            font-size: 1.2rem;
+            color: var(--primary);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 25px;
+            margin-top: 8px;
+        }
+        
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .error-message {
+            color: var(--danger);
+            font-size: 0.85rem;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .input-invalid {
+            border-color: var(--danger);
+        }
+        
+        .progress-bar {
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background: var(--primary);
+            width: 33%;
+            transition: width 0.5s ease;
+        }
+        
+        @media (max-width: 900px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                flex: none;
+                width: 100%;
+            }
+            
+            .form-row, .date-row {
+                flex-direction: column;
+                gap: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-landmark"></i>
+                <h1>汇丰银行投资管理系统</h1>
+            </div>
+            <div class="user-info">
+                <div class="user-avatar">JD</div>
+                <div>
+                    <div>张经理</div>
+                    <div style="font-size: 0.9rem; opacity: 0.8;">高级投资顾问</div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="main-content">
+            <div class="sidebar">
+                <ul>
+                    <li class="active" data-page="dashboard"><i class="fas fa-home"></i> 控制面板</li>
+                    <li data-page="investment-form"><i class="fas fa-file-contract"></i> 投资信息录入</li>
+                    <li><i class="fas fa-chart-line"></i> 投资分析</li>
+                    <li><i class="fas fa-users"></i> 客户管理</li>
+                    <li><i class="fas fa-history"></i> 交易历史</li>
+                    <li><i class="fas fa-cog"></i> 系统设置</li>
+                    <li><i class="fas fa-sign-out-alt"></i> 退出系统</li>
+                </ul>
+            </div>
+            
+            <div class="content">
+                <div id="dashboard-page">
+                    <div class="page-title">
+                        <h2><i class="fas fa-tachometer-alt"></i> 控制面板</h2>
+                        <div>2023年10月15日 星期日</div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3 class="card-title">今日待办事项</h3>
+                        <ul style="list-style: none; padding-left: 20px;">
+                            <li style="padding: 10px 0; display: flex; align-items: center; gap: 15px;">
+                                <i class="fas fa-circle" style="color: var(--success); font-size: 0.6rem;"></i>
+                                完成客户王先生(客户ID: 880235)的投资协议审核
+                            </li>
+                            <li style="padding: 10px 0; display: flex; align-items: center; gap: 15px;">
+                                <i class="fas fa-circle" style="color: var(--warning); font-size: 0.6rem;"></i>
+                                联系客户李女士(电话: 138****5678)确认投资意向
+                            </li>
+                            <li style="padding: 10px 0; display: flex; align-items: center; gap: 15px;">
+                                <i class="fas fa-circle" style="color: var(--danger); font-size: 0.6rem;"></i>
+                                处理客户张先生的投资到期提醒(10月20日到期)
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <h3 style="margin: 30px 0 20px; color: var(--primary);">推荐投资产品</h3>
+                    <div class="investment-grid">
+                        <div class="investment-card">
+                            <h3><i class="fas fa-gem"></i> 金鼎理财</h3>
+                            <div class="rate">4.85%</div>
+                            <p><i class="fas fa-calendar"></i> 投资期限: 180天</p>
+                            <p><i class="fas fa-money-bill-wave"></i> 起购金额: 50,000元</p>
+                            <p><i class="fas fa-shield-alt"></i> 风险等级: R2(稳健型)</p>
+                            <div class="term">固定收益类</div>
+                        </div>
+                        <div class="investment-card">
+                            <h3><i class="fas fa-chart-pie"></i> 稳盈增长</h3>
+                            <div class="rate">5.25%</div>
+                            <p><i class="fas fa-calendar"></i> 投资期限: 365天</p>
+                            <p><i class="fas fa-money-bill-wave"></i> 起购金额: 100,000元</p>
+                            <p><i class="fas fa-shield-alt"></i> 风险等级: R3(平衡型)</p>
+                            <div class="term">混合类</div>
+                        </div>
+                        <div class="investment-card">
+                            <h3><i class="fas fa-rocket"></i> 聚宝盆</h3>
+                            <div class="rate">6.80%</div>
+                            <p><i class="fas fa-calendar"></i> 投资期限: 720天</p>
+                            <p><i class="fas fa-money-bill-wave"></i> 起购金额: 200,000元</p>
+                            <p><i class="fas fa-shield-alt"></i> 风险等级: R4(成长型)</p>
+                            <div class="term">权益类</div>
+                        </div>
+                        <div class="investment-card">
+                            <h3><i class="fas fa-university"></i> 月月盈</h3>
+                            <div class="rate">3.95%</div>
+                            <p><i class="fas fa-calendar"></i> 投资期限: 30天(可续)</p>
+                            <p><i class="fas fa-money-bill-wave"></i> 起购金额: 10,000元</p>
+                            <p><i class="fas fa-shield-alt"></i> 风险等级: R1(保守型)</p>
+                            <div class="term">现金管理类</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="investment-form-page" class="hidden">
+                    <div class="progress-bar">
+                        <div class="progress" id="form-progress"></div>
+                    </div>
+                    
+                    <div class="page-title">
+                        <h2><i class="fas fa-file-contract"></i> 客户投资信息录入</h2>
+                        <button class="btn btn-secondary" id="back-btn">
+                            <i class="fas fa-arrow-left"></i> 返回
+                        </button>
+                    </div>
+                    
+                    <div class="form-container">
+                        <form id="investment-form">
+                            <div class="card">
+                                <h3 class="card-title">客户基本信息</h3>
+                                
+                                <div class="form-section">
+                                    <h4 class="form-section-title"><i class="fas fa-user"></i> 个人资料</h4>
+                                    <div class="form-row">
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="client-name">客户姓名 <span class="required">*</span></label>
+                                                <input type="text" id="client-name" class="form-control" placeholder="请输入客户姓名" required>
+                                                <div class="error-message" id="name-error">请输入客户姓名</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="client-id">客户ID <span class="required">*</span></label>
+                                                <input type="text" id="client-id" class="form-control" placeholder="请输入客户ID" required>
+                                                <div class="error-message" id="id-error">请输入客户ID</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="id-number">身份证号码 <span class="required">*</span></label>
+                                                <input type="text" id="id-number" class="form-control" placeholder="请输入身份证号码" required>
+                                                <div class="error-message" id="id-number-error">请输入正确的身份证号码</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="phone">联系电话 <span class="required">*</span></label>
+                                                <input type="tel" id="phone" class="form-control" placeholder="请输入联系电话" required>
+                                                <div class="error-message" id="phone-error">请输入正确的联系电话</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="email">电子邮箱</label>
+                                        <input type="email" id="email" class="form-control" placeholder="请输入电子邮箱">
+                                        <div class="error-message" id="email-error">请输入有效的电子邮箱</div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="address">联系地址 <span class="required">*</span></label>
+                                        <input type="text" id="address" class="form-control" placeholder="请输入联系地址" required>
+                                        <div class="error-message" id="address-error">请输入联系地址</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-section">
+                                    <h4 class="form-section-title"><i class="fas fa-briefcase"></i> 职业信息</h4>
+                                    <div class="form-row">
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="occupation">职业 <span class="required">*</span></label>
+                                                <select id="occupation" class="form-control" required>
+                                                    <option value="">-- 请选择职业 --</option>
+                                                    <option value="公务员">公务员</option>
+                                                    <option value="企业主">企业主</option>
+                                                    <option value="公司职员">公司职员</option>
+                                                    <option value="自由职业">自由职业</option>
+                                                    <option value="退休人员">退休人员</option>
+                                                    <option value="其他">其他</option>
+                                                </select>
+                                                <div class="error-message" id="occupation-error">请选择职业</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="company">工作单位</label>
+                                                <input type="text" id="company" class="form-control" placeholder="请输入工作单位">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="annual-income">年收入 (人民币) <span class="required">*</span></label>
+                                        <select id="annual-income" class="form-control" required>
+                                            <option value="">-- 请选择年收入范围 --</option>
+                                            <option value="10万以下">10万以下</option>
+                                            <option value="10-20万">10-20万</option>
+                                            <option value="20-50万">20-50万</option>
+                                            <option value="50-100万">50-100万</option>
+                                            <option value="100万以上">100万以上</option>
+                                        </select>
+                                        <div class="error-message" id="income-error">请选择年收入范围</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <h3 class="card-title">投资信息</h3>
+                                
+                                <div class="form-section">
+                                    <h4 class="form-section-title"><i class="fas fa-chart-line"></i> 投资产品</h4>
+                                    <div class="form-row">
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="product">投资产品 <span class="required">*</span></label>
+                                                <select id="product" class="form-control" required>
+                                                    <option value="">-- 请选择投资产品 --</option>
+                                                    <option value="金鼎理财">金鼎理财</option>
+                                                    <option value="稳盈增长">稳盈增长</option>
+                                                    <option value="聚宝盆">聚宝盆</option>
+                                                    <option value="月月盈">月月盈</option>
+                                                    <option value="财富传承">财富传承</option>
+                                                    <option value="环球配置">环球配置</option>
+                                                </select>
+                                                <div class="error-message" id="product-error">请选择投资产品</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-col">
+                                            <div class="form-group">
+                                                <label for="amount">投资金额 (人民币) <span class="required">*</span></label>
+                                                <input type="number" id="amount" class="form-control" placeholder="请输入投资金额" required>
+                                                <div class="error-message" id="amount-error">请输入有效的投资金额</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>投资类型 <span class="required">*</span></label>
+                                        <div class="radio-group">
+                                            <div class="radio-option">
+                                                <input type="radio" id="type-fixed" name="investment-type" value="固定收益" checked>
+                                                <label for="type-fixed">固定收益</label>
+                                            </div>
+                                            <div class="radio-option">
+                                                <input type="radio" id="type-floating" name="investment-type" value="浮动收益">
+                                                <label for="type-floating">浮动收益</label>
+                                            </div>
+                                            <div class="radio-option">
+                                                <input type="radio" id="type-guaranteed" name="investment-type" value="保本浮动">
+                                                <label for="type-guaranteed">保本浮动</label>
+                                            </div>
+                                            <div class="radio-option">
+                                                <input type="radio" id="type-nonguaranteed" name="investment-type" value="非保本浮动">
+                                                <label for="type-nonguaranteed">非保本浮动</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>资金来源 <span class="required">*</span></label>
+                                        <div class="checkbox-group">
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" id="source-salary" name="fund-source" value="工资收入">
+                                                <label for="source-salary">工资收入</label>
+                                            </div>
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" id="source-business" name="fund-source" value="经营所得">
+                                                <label for="source-business">经营所得</label>
+                                            </div>
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" id="source-investment" name="fund-source" value="投资收益">
+                                                <label for="source-investment">投资收益</label>
+                                            </div>
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" id="source-assets" name="fund-source" value="资产变现">
+                                                <label for="source-assets">资产变现</label>
+                                            </div>
+                                            <div class="checkbox-option">
+                                                <input type="checkbox" id="source-other" name="fund-source" value="其他">
+                                                <label for="source-other">其他</label>
+                                            </div>
+                                        </div>
+                                        <div class="error-message" id="source-error">请选择资金来源</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-section">
+                                    <h4 class="form-section-title"><i class="fas fa-calendar-alt"></i> 投资期限</h4>
+                                    
+                                    <div class="form-group">
+                                        <label for="term">投资期限 (月) <span class="required">*</span></label>
+                                        <select id="term" class="form-control" required>
+                                            <option value="">-- 请选择投资期限 --</option>
+                                            <option value="1">1个月</option>
+                                            <option value="3">3个月</option>
+                                            <option value="6">6个月</option>
+                                            <option value="12">12个月</option>
+                                            <option value="24">24个月</option>
+                                            <option value="36">36个月</option>
+                                            <option value="60">60个月</option>
+                                        </select>
+                                        <div class="error-message" id="term-error">请选择投资期限</div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>起息日期 <span class="required">*</span></label>
+                                        <div class="date-row">
+                                            <div class="date-group">
+                                                <label for="start-year">年</label>
+                                                <select id="start-year" class="date-control" required>
+                                                    <option value="">-- 年 --</option>
+                                                    <option value="2023">2023</option>
+                                                    <option value="2024">2024</option>
+                                                    <option value="2025">2025</option>
+                                                    <option value="2026">2026</option>
+                                                    <option value="2027">2027</option>
+                                                </select>
+                                            </div>
+                                            <div class="date-group">
+                                                <label for="start-month">月</label>
+                                                <select id="start-month" class="date-control" required>
+                                                    <option value="">-- 月 --</option>
+                                                    <option value="1">1</option>
+                                                    <option value="2">2</option>
+                                                    <option value="3">3</option>
+                                                    <option value="4">4</option>
+                                                    <option value="5">5</option>
+                                                    <option value="6">6</option>
+                                                    <option value="7">7</option>
+                                                    <option value="8">8</option>
+                                                    <option value="9">9</option>
+                                                    <option value="10">10</option>
+                                                    <option value="11">11</option>
+                                                    <option value="12">12</option>
+                                                </select>
+                                            </div>
+                                            <div class="date-group">
+                                                <label for="start-day">日</label>
+                                                <select id="start-day" class="date-control" required>
+                                                    <option value="">-- 日 --</option>
+                                                    <!-- Days will be populated by JS -->
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="error-message" id="start-date-error">请选择完整的起息日期</div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>到期日期 <span class="required">*</span></label>
+                                        <div class="date-row">
+                                            <div class="date-group">
+                                                <label for="end-year">年</label>
+                                                <select id="end-year" class="date-control" required>
+                                                    <option value="">-- 年 --</option>
+                                                    <option value="2023">2023</option>
+                                                    <option value="2024">2024</option>
+                                                    <option value="2025">2025</option>
+                                                    <option value="2026">2026</option>
+                                                    <option value="2027">2027</option>
+                                                </select>
+                                            </div>
+                                            <div class="date-group">
+                                                <label for="end-month">月</label>
+                                                <select id="end-month" class="date-control" required>
+                                                    <option value="">-- 月 --</option>
+                                                    <option value="1">1</option>
+                                                    <option value="2">2</option>
+                                                    <option value="3">3</option>
+                                                    <option value="4">4</option>
+                                                    <option value="5">5</option>
+                                                    <option value="6">6</option>
+                                                    <option value="7">7</option>
+                                                    <option value="8">8</option>
+                                                    <option value="9">9</option>
+                                                    <option value="10">10</option>
+                                                    <option value="11">11</option>
+                                                    <option value="12">12</option>
+                                                </select>
+                                            </div>
+                                            <div class="date-group">
+                                                <label for="end-day">日</label>
+                                                <select id="end-day" class="date-control" required>
+                                                    <option value="">-- 日 --</option>
+                                                    <!-- Days will be populated by JS -->
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="error-message" id="end-date-error">请选择完整的到期日期</div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>是否自动续期 <span class="required">*</span></label>
+                                        <div class="radio-group">
+                                            <div class="radio-option">
+                                                <input type="radio" id="renewal-yes" name="auto-renewal" value="是" checked>
+                                                <label for="renewal-yes">是</label>
+                                            </div>
+                                            <div class="radio-option">
+                                                <input type="radio" id="renewal-no" name="auto-renewal" value="否">
+                                                <label for="renewal-no">否</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-section">
+                                    <h4 class="form-section-title"><i class="fas fa-file-alt"></i> 附加信息</h4>
+                                    
+                                    <div class="form-group">
+                                        <label for="risk-assessment">风险承受能力评估 <span class="required">*</span></label>
+                                        <select id="risk-assessment" class="form-control" required>
+                                            <option value="">-- 请选择风险承受能力 --</option>
+                                            <option value="保守型">保守型 (R1)</option>
+                                            <option value="稳健型">稳健型 (R2)</option>
+                                            <option value="平衡型">平衡型 (R3)</option>
+                                            <option value="成长型">成长型 (R4)</option>
+                                            <option value="进取型">进取型 (R5)</option>
+                                        </select>
+                                        <div class="error-message" id="risk-error">请选择风险承受能力</div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="referral">推荐人</label>
+                                        <input type="text" id="referral" class="form-control" placeholder="如有推荐人，请输入姓名">
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="notes">备注信息</label>
+                                        <textarea id="notes" class="form-control" rows="4" placeholder="请输入备注信息（如特殊要求、投资目的等）"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="reset" class="btn btn-danger">
+                                    <i class="fas fa-times"></i> 重置表单
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-check-circle"></i> 提交投资信息
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div id="completion-page" class="completion-page hidden">
+                    <div class="success-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h2>投资信息提交成功！</h2>
+                    <p>客户投资信息已成功录入银行系统，相关合同文件已生成并发送至客户邮箱。您可以在"交易历史"中查看详细信息或打印投资确认书。</p>
+                    
+                    <div class="summary-card">
+                        <h3>投资信息摘要</h3>
+                        <div class="summary-item">
+                            <span class="label">客户姓名：</span>
+                            <span class="value" id="summary-name">李明</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">客户ID：</span>
+                            <span class="value" id="summary-id">880235</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">投资产品：</span>
+                            <span class="value" id="summary-product">金鼎理财</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">投资金额：</span>
+                            <span class="value amount" id="summary-amount">¥500,000</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">投资类型：</span>
+                            <span class="value" id="summary-type">固定收益</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">起息日期：</span>
+                            <span class="value" id="summary-start">2023-10-18</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">到期日期：</span>
+                            <span class="value" id="summary-end">2024-04-15</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">投资期限：</span>
+                            <span class="value">180天</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">风险等级：</span>
+                            <span class="value" id="summary-risk">稳健型 (R2)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">预期年化收益：</span>
+                            <span class="value amount">4.85%</span>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: center; gap: 15px; margin-top: 30px;">
+                        <button class="btn btn-primary" id="new-investment-btn">
+                            <i class="fas fa-plus-circle"></i> 新增投资
+                        </button>
+                        <button class="btn btn-secondary">
+                            <i class="fas fa-print"></i> 打印确认书
+                        </button>
+                        <button class="btn" style="background: #e9ecef;">
+                            <i class="fas fa-history"></i> 查看历史
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 页面切换功能
+        document.querySelectorAll('.sidebar li').forEach(item => {
+            item.addEventListener('click', function() {
+                const page = this.getAttribute('data-page');
+                if (page) {
+                    // 更新侧边栏活动状态
+                    document.querySelectorAll('.sidebar li').forEach(li => {
+                        li.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // 显示对应的页面
+                    document.getElementById('dashboard-page').classList.add('hidden');
+                    document.getElementById('investment-form-page').classList.add('hidden');
+                    document.getElementById('completion-page').classList.add('hidden');
+                    
+                    if (page === 'dashboard') {
+                        document.getElementById('dashboard-page').classList.remove('hidden');
+                    } else if (page === 'investment-form') {
+                        document.getElementById('investment-form-page').classList.remove('hidden');
+                        document.getElementById('form-progress').style.width = '33%';
+                    }
+                }
+            });
+        });
+        
+        // 返回按钮
+        document.getElementById('back-btn').addEventListener('click', function() {
+            document.getElementById('investment-form-page').classList.add('hidden');
+            document.getElementById('dashboard-page').classList.remove('hidden');
+            document.querySelector('.sidebar li[data-page="dashboard"]').click();
+        });
+        
+        // 日期选择器初始化
+        function initDateSelectors() {
+            // 填充日期选择器
+            const daysContainer = document.getElementById('start-day');
+            const endDaysContainer = document.getElementById('end-day');
+            
+            // 清空现有选项
+            while (daysContainer.options.length > 1) daysContainer.remove(1);
+            while (endDaysContainer.options.length > 1) endDaysContainer.remove(1);
+            
+            // 添加1-31日的选项
+            for (let i = 1; i <= 31; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i;
+                daysContainer.appendChild(option.cloneNode(true));
+                endDaysContainer.appendChild(option.cloneNode(true));
+            }
+            
+            // 设置默认日期（一周后）
+            const today = new Date();
+            const nextWeek = new Date(today);
+            nextWeek.setDate(today.getDate() + 7);
+            
+            document.getElementById('start-year').value = nextWeek.getFullYear();
+            document.getElementById('start-month').value = nextWeek.getMonth() + 1;
+            document.getElementById('start-day').value = nextWeek.getDate();
+            
+            // 设置默认结束日期（6个月后）
+            const sixMonthsLater = new Date(today);
+            sixMonthsLater.setMonth(today.getMonth() + 6);
+            
+            document.getElementById('end-year').value = sixMonthsLater.getFullYear();
+            document.getElementById('end-month').value = sixMonthsLater.getMonth() + 1;
+            document.getElementById('end-day').value = sixMonthsLater.getDate();
+        }
+        
+        // 表单验证
+        function validateForm() {
+            let isValid = true;
+            
+            // 重置错误状态
+            document.querySelectorAll('.form-control').forEach(input => {
+                input.classList.remove('input-invalid');
+            });
+            document.querySelectorAll('.error-message').forEach(error => {
+                error.style.display = 'none';
+            });
+            
+            // 验证必填字段
+            const requiredFields = [
+                'client-name', 'client-id', 'id-number', 'phone', 
+                'address', 'occupation', 'annual-income', 'product', 
+                'amount', 'term', 'risk-assessment'
+            ];
+            
+            requiredFields.forEach(field => {
+                const input = document.getElementById(field);
+                if (!input.value.trim()) {
+                    input.classList.add('input-invalid');
+                    document.getElementById(`${field}-error`).style.display = 'block';
+                    isValid = false;
+                }
+            });
+            
+            // 验证投资金额
+            const amount = document.getElementById('amount');
+            if (amount.value && parseFloat(amount.value) < 10000) {
+                amount.classList.add('input-invalid');
+                document.getElementById('amount-error').textContent = '投资金额不能低于10,000元';
+                document.getElementById('amount-error').style.display = 'block';
+                isValid = false;
+            }
+            
+            // 验证日期
+            const startYear = document.getElementById('start-year').value;
+            const startMonth = document.getElementById('start-month').value;
+            const startDay = document.getElementById('start-day').value;
+            
+            if (!startYear || !startMonth || !startDay) {
+                document.getElementById('start-date-error').style.display = 'block';
+                isValid = false;
+            }
+            
+            const endYear = document.getElementById('end-year').value;
+            const endMonth = document.getElementById('end-month').value;
+            const endDay = document.getElementById('end-day').value;
+            
+            if (!endYear || !endMonth || !endDay) {
+                document.getElementById('end-date-error').style.display = 'block';
+                isValid = false;
+            }
+            
+            // 验证资金来源
+            const fundSources = document.querySelectorAll('input[name="fund-source"]:checked');
+            if (fundSources.length === 0) {
+                document.getElementById('source-error').style.display = 'block';
+                isValid = false;
+            }
+            
+            return isValid;
+        }
+        
+        // 提交表单
+        document.getElementById('investment-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (validateForm()) {
+                // 获取表单数据
+                const clientName = document.getElementById('client-name').value;
+                const clientId = document.getElementById('client-id').value;
+                const product = document.getElementById('product').value;
+                const amount = document.getElementById('amount').value;
+                const investmentType = document.querySelector('input[name="investment-type"]:checked').value;
+                const term = document.getElementById('term').value;
+                const riskAssessment = document.getElementById('risk-assessment').value;
+                
+                const startYear = document.getElementById('start-year').value;
+                const startMonth = document.getElementById('start-month').value;
+                const startDay = document.getElementById('start-day').value;
+                
+                const endYear = document.getElementById('end-year').value;
+                const endMonth = document.getElementById('end-month').value;
+                const endDay = document.getElementById('end-day').value;
+                
+                // 更新摘要信息
+                document.getElementById('summary-name').textContent = clientName;
+                document.getElementById('summary-id').textContent = clientId;
+                document.getElementById('summary-product').textContent = product;
+                document.getElementById('summary-amount').textContent = `¥${parseInt(amount).toLocaleString()}`;
+                document.getElementById('summary-type').textContent = investmentType;
+                document.getElementById('summary-start').textContent = `${startYear}-${startMonth.padStart(2, '0')}-${startDay.padStart(2, '0')}`;
+                document.getElementById('summary-end').textContent = `${endYear}-${endMonth.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+                document.getElementById('summary-risk').textContent = riskAssessment;
+                
+                // 显示完成页面
+                document.getElementById('investment-form-page').classList.add('hidden');
+                document.getElementById('completion-page').classList.remove('hidden');
+                document.getElementById('form-progress').style.width = '100%';
+            } else {
+                // 显示错误提示
+                alert('请检查表单，确保所有必填字段都已正确填写');
+            }
+        });
+        
+        // 新增投资按钮
+        document.getElementById('new-investment-btn').addEventListener('click', function() {
+            document.getElementById('completion-page').classList.add('hidden');
+            document.getElementById('investment-form-page').classList.remove('hidden');
+            document.getElementById('form-progress').style.width = '33%';
+            document.getElementById('investment-form').reset();
+            initDateSelectors();
+        });
+        
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', function() {
+            initDateSelectors();
+            
+            // 设置默认选项
+            document.getElementById('occupation').value = '公司职员';
+            document.getElementById('annual-income').value = '20-50万';
+            document.getElementById('product').value = '金鼎理财';
+            document.getElementById('amount').value = '500000';
+            document.getElementById('term').value = '6';
+            document.getElementById('risk-assessment').value = '稳健型';
+            
+            // 设置默认资金来源
+            document.getElementById('source-salary').checked = true;
+            document.getElementById('source-investment').checked = true;
+        });
+    </script>
+</body>
+</html>

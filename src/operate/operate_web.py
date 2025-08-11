@@ -446,7 +446,9 @@ class WebController(Generic[Context]):
             
             try:
                 # _try_select_option 方法将被重构以处理两种情况
-                success = await self._try_select_option(current_page, params.target, params.option)
+                useful,success  = await self._try_select_option(current_page, params.target, params.option)
+                if not useful:
+                    return ActionResult(success=False, error=f"需要等待下一轮再试")
                 if success:
                     msg = f"✅ 成功在 {params.target} 中选择了选项: {params.option}"
                     logger.info(msg)
@@ -699,8 +701,8 @@ class WebController(Generic[Context]):
             except:
                 continue
         return False
-    
-    async def _try_select_option(self, page: Page, target: str, option: str) -> bool:
+
+    async def _try_select_option(self, page: Page, target: str, option: str) -> Dict[bool, bool]:
         """
         尝试用多种策略选择下拉选项：
         1. 原生<select>选择。
@@ -709,14 +711,14 @@ class WebController(Generic[Context]):
         locator = await self._find_locator(page, target)
         if not locator:
             logger.warning(f"选择选项失败：找不到目标元素 '{target}'")
-            return False
+            return True,False
 
         # --- 策略1: 尝试作为原生 <select> 元素处理 ---
         try:
             # 使用 `label` 参数，这是最稳健的方式
             await locator.select_option(label=option, timeout=2000) # 短超时
             logger.info(f"成功使用原生select方式选择了 '{option}'")
-            return True
+            return True,True
         except Exception:
             logger.debug(f"原生select方式失败，将尝试自定义下拉框策略。")
 
@@ -726,11 +728,11 @@ class WebController(Generic[Context]):
             await locator.click()
             # 等待一小段时间让UI响应，比如选项列表出现
             await asyncio.sleep(0.5)
-
+            return False,False
             # 步骤 B: 在整个页面中查找并点击出现的选项
             # 使用更精确的定位器，比如role="option"或直接按文本
             # 正则表达式 `^${...}$` 用于全词匹配，防止选中 "Option A" 时误选 "Option ABC"
-            option_text_pattern = f"^{re.escape(option)}$"
+            '''option_text_pattern = f"^{re.escape(option)}$"
             option_locator = page.get_by_role("option", name=re.compile(option_text_pattern))
             
             # 如果按角色找不到，回退到按文本查找
@@ -743,11 +745,11 @@ class WebController(Generic[Context]):
                 return True
             else:
                 logger.warning(f"点击了 '{target}' 后，未能找到文本为 '{option}' 的可见选项。可能需要滚动。")
-                return False
+                return False'''
         except Exception as e:
             logger.error(f"自定义下拉框选择策略失败: {e}")
-            return False
-    
+            return False,False
+
     async def _custom_select_option(self, page: Page, target: str, option: str):
         """处理自定义下拉框"""
         await page.locator(target).first.click()

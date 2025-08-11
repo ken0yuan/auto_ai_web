@@ -19,12 +19,12 @@ from PyQt5.QtCore import Qt
 from qasync import QEventLoop, asyncSlot
 from playwright.async_api import async_playwright
 
-from llm import generate_opera, ui_analyzer
+from llm import generate_opera, ui_analyzer, pic_analyzer
 from operate.operate_web import WebController, extract_json_from_response
 from dom.dom_elem import get_related_elements
 from prompt.prompt_generate import get_updated_state, format_browser_state_prompt
-from Prompts import ui_analyzer_expert, task_analyzer, pic_analyzer
-from main import extract_operations, parse_agent_output, async_call_with_retry, ENHANCED_PAGE_INIT_SCRIPT 
+from Prompts import pic_analyzer_expert, pic_analyzer_expert_2
+from main import ENHANCED_PAGE_INIT_SCRIPT, async_call_with_retry, extract_operations, parse_agent_output  # 只用到这个，call_with_retry换成异步版
 from playwright.async_api import Browser, BrowserContext, Page
 
 class ChatCard(QFrame):
@@ -158,12 +158,8 @@ class MainWindow(QWidget):
     async def run_main_logic(self, input_website, input_task):
         chat_history = []
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
-            context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                device_scale_factor=1.0,
-                color_scheme="dark"
-            )
+            browser = await p.chromium.launch(headless=False,args=["--start-maximized"])
+            context = await browser.new_context(no_viewport=True,color_scheme="dark")  # ✅ 禁用固定 viewport，使用暗色主题
             await context.add_init_script(ENHANCED_PAGE_INIT_SCRIPT)
             # ✅ 直接使用输入的网址
             page = await context.new_page()
@@ -173,7 +169,7 @@ class MainWindow(QWidget):
             controller.set_context(context)
             old_url=input_website
             old_page_count = 1  # 初始页面数量
-            num = 0  # 用于标记每次操作的截图文件名
+            num = 0
             while True:
                 # ✅ 获取当前活跃页面
                 switch_page = False
@@ -202,20 +198,23 @@ class MainWindow(QWidget):
                 except Exception as e:
                     print(f"⚠️ 页面加载等待超时: {e}")
                     # 继续执行，不中断流程'''
-                
+
                 # ✅ 基于当前活跃页面截图和获取状态
+                # screenshot = await current_page.screenshot(path=f"screenshot_{controller.current_page_index}_{num0}.png")
+                # num0 += 1
+                # screenshot_base64 = base64.b64encode(screenshot).decode('utf-8')
                 JS_PATH = Path(__file__).resolve().parent / "dom/index.js"
                 state = await get_updated_state(current_page, JS_PATH)
-                screenshot = await current_page.screenshot(path=f"screenshot_{controller.current_page_index}_{num}.png")
+                #print("111")
+                message = format_browser_state_prompt(state)
+                #print("222")
+                screenshot = await current_page.screenshot()
                 num += 1
-                screenshot_base64 = base64.b64encode(screenshot).decode('utf-8')
-
-                #print("1111111\n")
-
-                # ✅ 异步调用大模型
+                screenshot_base64_highlight = base64.b64encode(screenshot).decode('utf-8')
+                #print("2222222\n")
                 response = await async_call_with_retry(
-                    ui_analyzer, 3, 2,
-                    input_task, screenshot_base64, pic_analyzer, chat_history
+                    pic_analyzer, 3, 2,
+                    input_task, screenshot_base64_highlight, message, pic_analyzer_expert, chat_history
                 )
                 #print("2222222\n")
                 if response.startswith("函数") or response.startswith("API错误") or response.startswith("调用API失败"):
@@ -227,16 +226,19 @@ class MainWindow(QWidget):
                 thought, task, operations = parse_agent_output(response)
                 elements = get_related_elements(state.element_tree)
                 controller.update_dom_elements(elements)
+                chat_history.append({"role": "assistant", "content": f"{thought}"})
                 #operations += ["[操作：scroll，对象：，内容：200]"]  # 每次结束滚动
                 result_logs = []
-                done = False  # 用于标记任务是否完成
+                done = False
                 if operations:
                     for op in operations:
                         result = await controller.execute_from_string(op)
-                        result_logs.append(f"{op}: {result.success} - {result.message}")
-                        #chat_history.append({"role": "user", "content": task})
-                        chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message} - {result.error}"})
+                        # state1 = await get_updated_state(current_page, JS_PATH)
+                        result_logs.append(f"{op}: {result.success} - {result.message} - {result.error}")
+                        chat_history.append({"role": "assistant", "content": f"{op}: {result.success} - {result.message} - {result.error}"}) 
                         result_logs.append(f"操作的任务: {task}")
+                        if result.error == "需要等待下一轮再试":
+                            break
                         #result_logs.append(f"历史任务: {chat_history[-1]}")
                         # ✅ 如果是滚动操作，等待更长时间让页面稳定
                         if result.is_done:
@@ -246,9 +248,9 @@ class MainWindow(QWidget):
                     break
 
                 self.add_chat_card(thought, "\n".join(result_logs))
+                # chat_history.append({"role": "user", "content": task})
                 if done:
                     break
-
 
             await context.close()
             await browser.close()
